@@ -141,6 +141,8 @@ class ArticleDraft(BaseModel):
     source_map: dict[str, HttpUrl]
     preference_rules: list[PreferenceRule] = Field(default_factory=list)
     revision_notes: list[str] = Field(default_factory=list)
+    parent_draft_id: str | None = None
+    edit_note: str = ""
     generator_model: str
     prompt_version: str = "codequest-draft-v1"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

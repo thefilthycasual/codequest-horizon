@@ -24,11 +24,14 @@ from .drafting import (
     create_ollama_cloud_draft_generator,
 )
 from .models import (
+    ArticleDraft,
     ArticleType,
     DecisionOutcome,
     DiscordApprovalRequest,
     DiscordApprovalStatus,
     DraftDecision,
+    DraftParagraph,
+    DraftSection,
 )
 from .preferences import build_preference_profile
 from .quality import evaluate_draft
@@ -77,8 +80,8 @@ align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0}.layout{display:grid;gri
 minmax(310px,.75fr);gap:20px;align-items:start}.stack{display:grid;gap:20px}.panel{box-shadow:0 1px 2px rgba(17,24,39,.02)}
 .source{padding:18px 0;border-top:1px solid var(--line)}.source:first-of-type{border-top:0}.source a{color:#c75b17;
 overflow-wrap:anywhere}.facts li,.questions li{margin:7px 0}form{display:grid;gap:10px}form+form{margin-top:14px}
-select,textarea,button{width:100%;font:inherit;border:1px solid #d9dde3;border-radius:12px;padding:11px 13px}
-select,textarea{color:var(--ink);background:#fff}textarea{min-height:108px;resize:vertical}button{background:var(--ink);
+select,input,textarea,button{width:100%;font:inherit;border:1px solid #d9dde3;border-radius:12px;padding:11px 13px}
+select,input,textarea{color:var(--ink);background:#fff}textarea{min-height:108px;resize:vertical}button{background:var(--ink);
 color:#fff;font-weight:750;cursor:pointer;border-color:var(--ink);border-radius:999px}button:hover{filter:brightness(1.08)}
 button:disabled{opacity:.45;cursor:not-allowed}.button-approve{background:var(--accent);border-color:var(--accent)}
 .button-revise{background:#fff;color:var(--ink);border-color:#cfd4dc}.feedback{border-top:1px solid var(--line);padding:14px 0}
@@ -112,6 +115,10 @@ border-radius:14px;padding:20px}.stat-card small{color:var(--muted)}.stat-value{
 .section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:26px 0 14px}.text-link{color:#c75b17;font-weight:700;text-decoration:none}
 .discord-panel{border-color:#d9dcff;background:#fafaff}.discord-panel .discord-badge{background:#5865f2;color:#fff;border-color:#5865f2}
 .crumb{display:flex;gap:8px;color:var(--muted);font-size:12px;margin-bottom:18px}.crumb a{text-decoration:none}.crumb a:hover{color:var(--accent)}
+.draft-toolbar{display:flex;justify-content:flex-end;margin-bottom:10px}.draft-toolbar a{display:inline-flex;width:auto;padding:8px 14px;border:1px solid var(--line);
+border-radius:999px;text-decoration:none;font-weight:750;background:#fff}.editor-section{display:grid;gap:12px}.editor-paragraph{padding:16px;border:1px solid var(--line);
+border-radius:12px;background:#fafafa}.field-label{display:block;font-size:12px;font-weight:800;color:#565d68;margin-bottom:5px}.version{padding:11px 0;border-top:1px solid var(--line)}
+.version:first-of-type{border-top:0}.version code{font-size:11px;color:var(--muted);overflow-wrap:anywhere}
 @media(max-width:980px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:820px){.sidebar{position:static;width:auto;padding:12px}.workspace{padding-bottom:12px;margin-bottom:8px}.workspace small,.nav-label,.sidebar-foot{display:none}
 .side-nav{display:flex;overflow:auto}.nav-item{white-space:nowrap}.content{margin-left:0}.shell{padding:30px 18px 70px}}
@@ -172,7 +179,7 @@ def _rules_html(profile) -> str:
     )
 
 
-def _draft_html(draft) -> str:
+def _draft_html(draft, edit_href: str | None = None) -> str:
     if draft is None:
         return (
             "<article class='panel'><h2>Article draft</h2>"
@@ -189,11 +196,21 @@ def _draft_html(draft) -> str:
             )
             paragraphs.append(f"<p>{escape(paragraph.text)} {citations}</p>")
         sections.append(f"<section><h3>{escape(section.heading)}</h3>{''.join(paragraphs)}</section>")
+    toolbar = (
+        f"<div class='draft-toolbar'><a href='{escape(edit_href, quote=True)}'>Edit this version</a></div>"
+        if edit_href
+        else ""
+    )
+    lineage = (
+        f" · edited from {escape(draft.parent_draft_id)}"
+        if draft.parent_draft_id
+        else ""
+    )
     return (
-        "<article class='panel draft'><p class='eyebrow'>UNPUBLISHED REVIEW DRAFT</p>"
+        f"<article class='panel draft'>{toolbar}<p class='eyebrow'>UNPUBLISHED REVIEW DRAFT</p>"
         f"<h2>{escape(draft.title)}</h2><p class='muted dek'>{escape(draft.dek)}</p>"
         f"{''.join(sections)}<small class='muted'>Generated with {escape(draft.generator_model)} · "
-        f"{escape(draft.prompt_version)} · {escape(draft.created_at.isoformat())}</small></article>"
+        f"{escape(draft.prompt_version)} · {escape(draft.created_at.isoformat())}{lineage}</small></article>"
     )
 
 
@@ -369,6 +386,7 @@ def create_app(
         brief = packet.brief
         feedback = store.list_feedback(content_item_id)
         latest_draft = store.get_latest_draft(content_item_id)
+        draft_versions = store.list_drafts(content_item_id)
         discord_request = store.get_latest_discord_request(content_item_id)
         wordpress_delivery = (
             store.get_wordpress_delivery(latest_draft.draft_id) if latest_draft else None
@@ -430,6 +448,14 @@ def create_app(
             for scope in FEEDBACK_SCOPES
         )
         encoded_id = quote(content_item_id, safe="")
+        can_edit_draft = bool(
+            latest_draft
+            and not (
+                wordpress_delivery
+                and wordpress_delivery.status.value == "draft_created"
+            )
+        )
+        edit_href = f"/items/{encoded_id}/edit" if can_edit_draft else None
         if record.status == "approved":
             review_controls = (
                 f"<div class='decision'><span class='badge {escape(record.status)}'>"
@@ -454,6 +480,10 @@ def create_app(
                     else "<p class='muted'>Select this story before generating a draft.</p>"
                 )
             )
+            if latest_draft and latest_draft.parent_draft_id and decision_for_latest is None:
+                review_controls += (
+                    "<p class='muted'>This edited version requires a fresh editorial decision.</p>"
+                )
         if latest_draft and quality_report:
             approval_actions = ""
             if record.status != "approved" and not (
@@ -537,22 +567,43 @@ def create_app(
                 "<section class='panel'><span class='badge approved'>WordPress · draft only</span>"
                 f"<h2>Delivery</h2>{publishing_controls}</section>"
             )
+        versions_html = "".join(
+            "<div class='version'>"
+            + (
+                "<span class='badge selected'>Latest</span> "
+                if draft.draft_id == latest_draft.draft_id
+                else ""
+            )
+            + f"<strong>{escape(draft.title)}</strong><br><code>{escape(draft.draft_id)}</code>"
+            + (
+                f"<br><small class='muted'>Edited from {escape(draft.parent_draft_id)}</small>"
+                if draft.parent_draft_id
+                else "<br><small class='muted'>Generated version</small>"
+            )
+            + "</div>"
+            for draft in draft_versions
+        ) or "<p class='muted'>No versions yet.</p>"
+        versions_panel = (
+            f"<section class='panel'><h2>Version history</h2>{versions_html}</section>"
+            if latest_draft
+            else ""
+        )
         return _page(
             brief.working_title,
             f"<header class='page-head'><p class='eyebrow'>{escape(brief.article_type.value.replace('_', ' ').upper())}</p>"
             f"<h1>{escape(brief.working_title)}</h1><div class='meta'>"
             f"<span class='badge {escape(record.status)}'>{escape(record.status)}</span>"
             f"<span>{len(packet.evidence.sources)} evidence source(s)</span>"
-            f"<span>·</span><span>{len(store.list_drafts(content_item_id))} draft version(s)</span></div></header>"
+            f"<span>·</span><span>{len(draft_versions)} draft version(s)</span></div></header>"
             "<div class='layout'><section class='stack'>"
             f"<article class='panel'><h2>Central angle</h2><p>{escape(brief.central_angle)}</p>"
             f"<h2>Audience value</h2><p>{escape(brief.audience_value)}</p></article>"
             f"<article class='panel'><h2>Required facts</h2><ul class='facts'>{facts}</ul>"
             f"<h2>Research gaps</h2><ul class='questions'>{questions}</ul></article>"
             f"<article class='panel'><h2>Evidence</h2>{sources}</article>"
-            f"{_draft_html(latest_draft)}</section>"
+            f"{_draft_html(latest_draft, edit_href)}</section>"
             "<aside class='stack'><section class='panel'><h2>Review state</h2>"
-            f"{review_controls}</section>{approval_panel}{publishing_panel}"
+            f"{review_controls}</section>{approval_panel}{publishing_panel}{versions_panel}"
             "<section class='panel'><h2>Add feedback</h2>"
             f"<form method='post' action='/items/{encoded_id}/feedback'>"
             f"<select name='signal'>{signal_options}</select>"
@@ -565,6 +616,160 @@ def create_app(
             f"<section class='panel'><h2>Feedback history</h2>{feedback_html}</section></aside></div>",
             active="editorial",
         )
+
+    @app.get("/items/{content_item_id}/edit", response_class=HTMLResponse)
+    def edit_draft(content_item_id: str) -> HTMLResponse:
+        record = store.get_item(content_item_id)
+        draft = store.get_latest_draft(content_item_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Editorial item not found")
+        if draft is None:
+            raise HTTPException(status_code=409, detail="Generate a draft before editing it.")
+        delivery = store.get_wordpress_delivery(draft.draft_id)
+        if delivery and delivery.status.value == "draft_created":
+            raise HTTPException(
+                status_code=409,
+                detail="This version already has a WordPress draft and can no longer be edited here.",
+            )
+        encoded_id = quote(content_item_id, safe="")
+        section_fields = []
+        for section_index, section in enumerate(draft.sections):
+            paragraphs = []
+            for paragraph in section.paragraphs:
+                paragraphs.append(
+                    "<div class='editor-paragraph'>"
+                    f"<input type='hidden' name='paragraph_section' value='{section_index}'>"
+                    "<label class='field-label'>Paragraph</label>"
+                    f"<textarea name='paragraph_text' required>{escape(paragraph.text)}</textarea>"
+                    "<label class='field-label'>Evidence IDs</label>"
+                    f"<input name='paragraph_sources' required value='{escape(', '.join(paragraph.source_ids), quote=True)}'>"
+                    "</div>"
+                )
+            section_fields.append(
+                "<section class='panel editor-section'>"
+                f"<p class='eyebrow'>SECTION {section_index + 1}</p>"
+                "<label class='field-label'>Section heading</label>"
+                f"<input name='section_heading' required value='{escape(section.heading, quote=True)}'>"
+                f"{''.join(paragraphs)}</section>"
+            )
+        source_reference = "".join(
+            f"<div class='version'><strong>{escape(source_id)}</strong>"
+            f"<br><a class='text-link' href='{escape(str(source_url), quote=True)}' target='_blank' rel='noopener'>{escape(str(source_url))}</a></div>"
+            for source_id, source_url in draft.source_map.items()
+        )
+        return _page(
+            f"Edit · {draft.title}",
+            "<div class='crumb'><a href='/drafts'>Draft library</a><span>›</span>"
+            f"<a href='/items/{encoded_id}'>Article review</a><span>›</span><span>Edit draft</span></div>"
+            "<header class='page-head'><p class='eyebrow'>NEW VERSION</p>"
+            "<h1>Edit the article, preserve the <span class='accent'>history.</span></h1>"
+            "<p class='muted'>Saving creates a new draft version and requires a fresh editorial approval.</p></header>"
+            "<div class='layout'><form class='stack' method='post' "
+            f"action='/items/{encoded_id}/edit'>"
+            f"<input type='hidden' name='base_draft_id' value='{escape(draft.draft_id, quote=True)}'>"
+            "<section class='panel editor-section'><label class='field-label'>Headline</label>"
+            f"<input name='title' required value='{escape(draft.title, quote=True)}'>"
+            "<label class='field-label'>Summary</label>"
+            f"<textarea name='dek' required>{escape(draft.dek)}</textarea></section>"
+            f"{''.join(section_fields)}"
+            "<section class='panel'><label class='field-label'>Edit note</label>"
+            "<textarea name='edit_note' required placeholder='Briefly record what changed and why.'></textarea>"
+            "<button class='button-approve' type='submit'>Save as new version</button></section></form>"
+            "<aside class='stack'><section class='panel'><h2>What happens next</h2>"
+            "<p class='muted'>The previous version remains available. Any previous approval is invalidated for this new version, and quality checks run again automatically.</p></section>"
+            f"<section class='panel'><h2>Evidence reference</h2>{source_reference}</section></aside></div>",
+            active="drafts",
+        )
+
+    @app.post("/items/{content_item_id}/edit")
+    def save_edited_draft(
+        content_item_id: str,
+        base_draft_id: str = Form(),
+        title: str = Form(),
+        dek: str = Form(),
+        section_heading: list[str] = Form(),
+        paragraph_section: list[int] = Form(),
+        paragraph_text: list[str] = Form(),
+        paragraph_sources: list[str] = Form(),
+        edit_note: str = Form(),
+    ) -> RedirectResponse:
+        record = store.get_item(content_item_id)
+        base = store.get_latest_draft(content_item_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Editorial item not found")
+        if base is None:
+            raise HTTPException(status_code=409, detail="Generate a draft before editing it.")
+        if base.draft_id != base_draft_id:
+            raise HTTPException(
+                status_code=409,
+                detail="The draft changed while it was being edited. Reload and try again.",
+            )
+        cleaned_title = title.strip()
+        cleaned_dek = dek.strip()
+        cleaned_note = edit_note.strip()
+        if not cleaned_title or not cleaned_dek or not cleaned_note:
+            raise HTTPException(
+                status_code=400,
+                detail="Headline, summary, and edit note are required.",
+            )
+        if not section_heading or not (
+            len(paragraph_section) == len(paragraph_text) == len(paragraph_sources)
+        ):
+            raise HTTPException(status_code=400, detail="Invalid article section data.")
+        grouped: list[list[DraftParagraph]] = [[] for _ in section_heading]
+        known_sources = set(base.source_map)
+        for section_index, text, source_text in zip(
+            paragraph_section, paragraph_text, paragraph_sources
+        ):
+            if section_index < 0 or section_index >= len(section_heading):
+                raise HTTPException(status_code=400, detail="Invalid paragraph section.")
+            cleaned_text = text.strip()
+            source_ids = list(
+                dict.fromkeys(source_text.replace(",", " ").split())
+            )
+            if not cleaned_text or not source_ids:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Every paragraph needs text and at least one evidence ID.",
+                )
+            unknown = [source_id for source_id in source_ids if source_id not in known_sources]
+            if unknown:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Unknown evidence IDs: " + ", ".join(unknown),
+                )
+            grouped[section_index].append(
+                DraftParagraph(text=cleaned_text, source_ids=source_ids)
+            )
+        sections = []
+        for heading, paragraphs in zip(section_heading, grouped):
+            cleaned_heading = heading.strip()
+            if not cleaned_heading or not paragraphs:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Every section needs a heading and at least one paragraph.",
+                )
+            sections.append(DraftSection(heading=cleaned_heading, paragraphs=paragraphs))
+        edited = ArticleDraft(
+            content_item_id=content_item_id,
+            title=cleaned_title,
+            dek=cleaned_dek,
+            sections=sections,
+            source_map=base.source_map,
+            preference_rules=base.preference_rules,
+            revision_notes=base.revision_notes,
+            parent_draft_id=base.draft_id,
+            edit_note=cleaned_note,
+            generator_model=base.generator_model,
+            prompt_version=base.prompt_version,
+        )
+        try:
+            store.save_edited_draft(edited, base.draft_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Editorial item not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(f"/items/{quote(content_item_id, safe='')}", status_code=303)
 
     @app.post("/items/{content_item_id}/status")
     def update_status(content_item_id: str, status: str = Form()) -> RedirectResponse:

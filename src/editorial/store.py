@@ -305,6 +305,38 @@ class EditorialStore:
                 ),
             )
 
+    def save_edited_draft(self, draft: ArticleDraft, parent_draft_id: str) -> None:
+        """Save a human-edited version and invalidate any approval on its parent."""
+
+        latest = self.get_latest_draft(draft.content_item_id)
+        if latest is None or latest.draft_id != parent_draft_id:
+            raise ValueError("The draft changed while it was being edited. Reload and try again.")
+        if draft.parent_draft_id != parent_draft_id:
+            raise ValueError("Edited draft lineage does not match its parent draft.")
+        delivery = self.get_wordpress_delivery(parent_draft_id)
+        if delivery and delivery.status == WordPressDeliveryStatus.DRAFT_CREATED:
+            raise ValueError(
+                "This version already has a WordPress draft. Edit it in WordPress or start a new story."
+            )
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO editorial_drafts "
+                "(draft_id, content_item_id, draft_json, created_at) VALUES (?, ?, ?, ?)",
+                (
+                    draft.draft_id,
+                    draft.content_item_id,
+                    draft.model_dump_json(),
+                    draft.created_at.isoformat(),
+                ),
+            )
+            cursor = connection.execute(
+                "UPDATE editorial_items SET status = 'selected', updated_at = ? "
+                "WHERE content_item_id = ?",
+                (_now(), draft.content_item_id),
+            )
+        if cursor.rowcount != 1:
+            raise KeyError(draft.content_item_id)
+
     def get_latest_draft(self, content_item_id: str) -> ArticleDraft | None:
         with self._connect() as connection:
             row = connection.execute(
