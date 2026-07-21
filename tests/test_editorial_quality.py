@@ -50,7 +50,7 @@ def test_quality_report_blocks_unknown_citations() -> None:
     assert report.can_approve is False
 
 
-def test_persisted_approval_locks_latest_draft(tmp_path) -> None:
+def test_persisted_review_queues_latest_draft_for_discord(tmp_path) -> None:
     store = EditorialStore(tmp_path / "editorial.sqlite3")
     packet = _packet()
     draft = _draft(packet)
@@ -60,14 +60,14 @@ def test_persisted_approval_locks_latest_draft(tmp_path) -> None:
     decision = DraftDecision(
         content_item_id=packet.brief.content_item_id,
         draft_id=draft.draft_id,
-        outcome=DecisionOutcome.APPROVED,
-        notes="Ready for the publishing handoff.",
+        outcome=DecisionOutcome.READY_FOR_APPROVAL,
+        notes="Ready for Discord approval.",
         quality_report=evaluate_draft(packet, draft),
     )
 
     store.record_decision(decision)
 
-    assert store.get_item(packet.brief.content_item_id).status == "approved"
+    assert store.get_item(packet.brief.content_item_id).status == "ready_for_approval"
     assert store.get_latest_decision(packet.brief.content_item_id).decision_id == decision.decision_id
     with pytest.raises(ValueError, match="persisted editorial decision"):
         store.set_status(packet.brief.content_item_id, "approved")
@@ -119,7 +119,7 @@ def test_only_latest_draft_can_receive_decision(tmp_path) -> None:
             DraftDecision(
                 content_item_id=packet.brief.content_item_id,
                 draft_id=first.draft_id,
-                outcome=DecisionOutcome.APPROVED,
+                outcome=DecisionOutcome.READY_FOR_APPROVAL,
                 quality_report=evaluate_draft(packet, first),
             )
         )

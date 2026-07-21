@@ -22,6 +22,7 @@ EDITORIAL_STATUSES = (
     "candidate",
     "selected",
     "needs_revision",
+    "ready_for_approval",
     "approved",
     "archived",
 )
@@ -266,8 +267,11 @@ class EditorialStore:
             raise ValueError("Only the latest draft can receive an editorial decision.")
         if decision.quality_report.draft_id != decision.draft_id:
             raise ValueError("Quality report does not belong to this draft.")
-        if decision.outcome == DecisionOutcome.APPROVED and not decision.quality_report.can_approve:
-            raise ValueError("Draft has blocking quality failures and cannot be approved.")
+        if (
+            decision.outcome == DecisionOutcome.READY_FOR_APPROVAL
+            and not decision.quality_report.can_approve
+        ):
+            raise ValueError("Draft has blocking quality failures and cannot enter approval.")
         if decision.outcome == DecisionOutcome.NEEDS_REVISION and not decision.notes.strip():
             raise ValueError("Revision requests require editor notes.")
 

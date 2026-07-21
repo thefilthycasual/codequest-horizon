@@ -194,7 +194,7 @@ def test_workspace_blocks_draft_generation_for_candidate(tmp_path) -> None:
     assert response.status_code == 409
 
 
-def test_workspace_persists_human_approval_for_latest_draft(tmp_path) -> None:
+def test_workspace_queues_reviewed_draft_for_discord_approval(tmp_path) -> None:
     db_path = tmp_path / "editorial.sqlite3"
     packet = _packet()
     store = EditorialStore(db_path)
@@ -205,15 +205,15 @@ def test_workspace_persists_human_approval_for_latest_draft(tmp_path) -> None:
 
     response = client.post(
         f"/items/{packet.brief.content_item_id}/decision",
-        data={"outcome": "approved", "notes": "Ready for publishing handoff."},
+        data={"outcome": "ready_for_approval", "notes": "Ready for Discord."},
         follow_redirects=False,
     )
     detail = client.get(f"/items/{packet.brief.content_item_id}")
 
     assert response.status_code == 303
-    assert store.get_item(packet.brief.content_item_id).status == "approved"
+    assert store.get_item(packet.brief.content_item_id).status == "ready_for_approval"
     assert store.get_latest_decision(packet.brief.content_item_id).notes.startswith("Ready")
-    assert "persisted draft decision" in detail.text
+    assert "Final approval remains in Discord" in detail.text
 
 
 def test_workspace_rejects_status_only_approval(tmp_path) -> None:

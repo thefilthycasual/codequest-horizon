@@ -170,7 +170,7 @@ class DraftQualityReport(BaseModel):
 
 
 class DecisionOutcome(str, Enum):
-    APPROVED = "approved"
+    READY_FOR_APPROVAL = "ready_for_approval"
     NEEDS_REVISION = "needs_revision"
 
 

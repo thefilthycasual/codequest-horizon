@@ -51,7 +51,8 @@ border-color:#f2c3a3;box-shadow:var(--shadow)}.card:hover:before{opacity:1}.badg
 border:1px solid var(--line);border-radius:999px;padding:4px 9px;color:#4b5563;background:#fff;font-size:11px;
 font-weight:800;text-transform:uppercase;letter-spacing:.06em}.badge.candidate{background:#f3f4f6}.badge.selected,
 .badge.prefer,.badge.pass{color:var(--success);background:#eefaf5;border-color:#cdebdc}.badge.approved{color:#fff;
-background:var(--success);border-color:var(--success)}.badge.needs_revision,.badge.avoid,.badge.warning{color:var(--warning);
+background:var(--success);border-color:var(--success)}.badge.ready_for_approval{color:#c75b17;background:var(--accent-soft);
+border-color:#ffd2b6}.badge.needs_revision,.badge.avoid,.badge.warning{color:var(--warning);
 background:#fff7ed;border-color:#fed7aa}.badge.block{color:var(--danger);background:#fef2f2;border-color:#fecaca}.meta{display:flex;
 align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0}.layout{display:grid;grid-template-columns:minmax(0,1.55fr)
 minmax(310px,.75fr);gap:20px;align-items:start}.stack{display:grid;gap:20px}.panel{box-shadow:0 1px 2px rgba(17,24,39,.02)}
@@ -281,10 +282,11 @@ def create_app(
             for scope in FEEDBACK_SCOPES
         )
         encoded_id = quote(content_item_id, safe="")
-        if record.status == "approved":
+        if record.status in {"approved", "ready_for_approval"}:
             review_controls = (
-                "<div class='decision'><span class='badge approved'>approved</span>"
-                "<p>This story is locked to its persisted draft decision.</p></div>"
+                f"<div class='decision'><span class='badge {escape(record.status)}'>"
+                f"{escape(record.status.replace('_', ' '))}</span>"
+                "<p>This story is locked to its persisted draft decision. Final approval remains in Discord.</p></div>"
             )
         else:
             review_controls = (
@@ -301,12 +303,12 @@ def create_app(
             )
         if latest_draft and quality_report:
             approval_actions = ""
-            if record.status != "approved":
+            if record.status not in {"approved", "ready_for_approval"}:
                 approval_actions = (
                     f"<form method='post' action='/items/{encoded_id}/decision'>"
                     "<textarea name='notes' placeholder='Approval note or required revisions'></textarea>"
-                    f"<button class='button-approve' name='outcome' value='approved' type='submit'"
-                    f"{' disabled' if not quality_report.can_approve else ''}>Approve this draft</button>"
+                    f"<button class='button-approve' name='outcome' value='ready_for_approval' type='submit'"
+                    f"{' disabled' if not quality_report.can_approve else ''}>Queue for Discord approval</button>"
                     "<button class='button-revise' name='outcome' value='needs_revision' type='submit'>"
                     "Request revision</button></form>"
                 )
