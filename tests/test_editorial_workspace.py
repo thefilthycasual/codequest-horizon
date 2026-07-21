@@ -71,6 +71,10 @@ def test_store_rejects_unknown_status_and_empty_feedback(tmp_path) -> None:
         store.set_status(packet.brief.content_item_id, "published")
     with pytest.raises(ValueError, match="must not be empty"):
         store.add_feedback(packet.brief.content_item_id, "general", "  ")
+    with pytest.raises(ValueError, match="Unsupported feedback signal"):
+        store.add_feedback(packet.brief.content_item_id, "tone", "No hype.", signal="maybe")
+    with pytest.raises(ValueError, match="Unsupported feedback scope"):
+        store.add_feedback(packet.brief.content_item_id, "tone", "No hype.", scope="account")
 
 
 def test_workspace_renders_inbox_detail_and_escaped_content(tmp_path) -> None:
@@ -106,7 +110,12 @@ def test_workspace_records_status_and_feedback(tmp_path) -> None:
     )
     feedback_response = client.post(
         f"/items/{item_id}/feedback",
-        data={"dimension": "tone", "note": "Make the opening more direct."},
+        data={
+            "signal": "avoid",
+            "dimension": "tone",
+            "scope": "global",
+            "note": "Do not open with generic scene-setting.",
+        },
         follow_redirects=False,
     )
 
@@ -115,6 +124,8 @@ def test_workspace_records_status_and_feedback(tmp_path) -> None:
     assert feedback_response.status_code == 303
     assert store.get_item(item_id).status == "needs_revision"
     assert store.list_feedback(item_id)[0]["dimension"] == "tone"
+    assert store.list_feedback(item_id)[0]["signal"] == "avoid"
+    assert "Do not open with generic" in client.get("/preferences").text
 
 
 def test_workspace_returns_empty_state_and_missing_item(tmp_path) -> None:

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .models import EditorialPacket
+from .models import EditorialPacket, PreferenceScope, PreferenceSignal
 
 
 EDITORIAL_STATUSES = (
@@ -29,6 +29,9 @@ FEEDBACK_DIMENSIONS = (
     "evidence",
     "technical_level",
 )
+
+FEEDBACK_SIGNALS = tuple(signal.value for signal in PreferenceSignal)
+FEEDBACK_SCOPES = tuple(scope.value for scope in PreferenceScope)
 
 
 def _now() -> str:
@@ -77,6 +80,8 @@ class EditorialStore:
                     feedback_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     content_item_id TEXT NOT NULL,
                     dimension TEXT NOT NULL,
+                    signal TEXT NOT NULL DEFAULT 'prefer',
+                    scope TEXT NOT NULL DEFAULT 'story',
                     note TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY (content_item_id)
@@ -85,6 +90,20 @@ class EditorialStore:
                 )
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(editorial_feedback)").fetchall()
+            }
+            if "signal" not in columns:
+                connection.execute(
+                    "ALTER TABLE editorial_feedback "
+                    "ADD COLUMN signal TEXT NOT NULL DEFAULT 'prefer'"
+                )
+            if "scope" not in columns:
+                connection.execute(
+                    "ALTER TABLE editorial_feedback "
+                    "ADD COLUMN scope TEXT NOT NULL DEFAULT 'story'"
+                )
 
     def save_packet(self, packet: EditorialPacket, status: str = "candidate") -> None:
         self._validate_status(status)
@@ -129,9 +148,20 @@ class EditorialStore:
         if cursor.rowcount != 1:
             raise KeyError(content_item_id)
 
-    def add_feedback(self, content_item_id: str, dimension: str, note: str) -> None:
+    def add_feedback(
+        self,
+        content_item_id: str,
+        dimension: str,
+        note: str,
+        signal: str = "prefer",
+        scope: str = "story",
+    ) -> None:
         if dimension not in FEEDBACK_DIMENSIONS:
             raise ValueError(f"Unsupported feedback dimension: {dimension}")
+        if signal not in FEEDBACK_SIGNALS:
+            raise ValueError(f"Unsupported feedback signal: {signal}")
+        if scope not in FEEDBACK_SCOPES:
+            raise ValueError(f"Unsupported feedback scope: {scope}")
         cleaned = note.strip()
         if not cleaned:
             raise ValueError("Feedback note must not be empty.")
@@ -140,19 +170,56 @@ class EditorialStore:
         with self._connect() as connection:
             connection.execute(
                 "INSERT INTO editorial_feedback "
-                "(content_item_id, dimension, note, created_at) VALUES (?, ?, ?, ?)",
-                (content_item_id, dimension, cleaned, _now()),
+                "(content_item_id, dimension, signal, scope, note, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (content_item_id, dimension, signal, scope, cleaned, _now()),
             )
 
     def list_feedback(self, content_item_id: str) -> list[dict[str, str | int]]:
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT feedback_id, dimension, note, created_at "
+                "SELECT feedback_id, dimension, signal, scope, note, created_at "
                 "FROM editorial_feedback WHERE content_item_id = ? "
                 "ORDER BY feedback_id DESC",
                 (content_item_id,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def list_applicable_feedback(
+        self,
+        article_type: str | None = None,
+        content_item_id: str | None = None,
+    ) -> list[dict[str, str | int]]:
+        """Return explicit feedback that applies to a future writing assignment."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT f.feedback_id, f.content_item_id, f.dimension, f.signal, "
+                "f.scope, f.note, f.created_at, i.packet_json "
+                "FROM editorial_feedback AS f "
+                "JOIN editorial_items AS i ON i.content_item_id = f.content_item_id "
+                "ORDER BY f.feedback_id DESC"
+            ).fetchall()
+
+        applicable: list[dict[str, str | int]] = []
+        for row in rows:
+            source_type = EditorialPacket.model_validate_json(row["packet_json"]).brief.article_type.value
+            scope = row["scope"]
+            applies = scope == "global"
+            applies = applies or (
+                scope == "article_type" and article_type is not None and source_type == article_type
+            )
+            applies = applies or (
+                scope == "story"
+                and content_item_id is not None
+                and row["content_item_id"] == content_item_id
+            )
+            if applies:
+                item = dict(row)
+                item.pop("packet_json")
+                item["article_type"] = source_type
+                applicable.append(item)
+        return applicable
 
     @staticmethod
     def _validate_status(status: str) -> None:

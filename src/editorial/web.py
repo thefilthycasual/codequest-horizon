@@ -9,7 +9,15 @@ from urllib.parse import quote
 from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from .store import EDITORIAL_STATUSES, FEEDBACK_DIMENSIONS, EditorialStore
+from .models import ArticleType
+from .preferences import build_preference_profile
+from .store import (
+    EDITORIAL_STATUSES,
+    FEEDBACK_DIMENSIONS,
+    FEEDBACK_SCOPES,
+    FEEDBACK_SIGNALS,
+    EditorialStore,
+)
 
 
 _STYLE = """
@@ -18,7 +26,7 @@ _STYLE = """
 font:15px/1.55 ui-sans-serif,system-ui,sans-serif;background:var(--bg);color:var(--text)}
 a{color:inherit}.shell{max-width:1120px;margin:auto;padding:32px 20px}.top{display:flex;
 justify-content:space-between;align-items:center;margin-bottom:30px}.brand{font-size:20px;font-weight:750;
-text-decoration:none}.eyebrow,.muted{color:var(--muted)}h1{font-size:34px;line-height:1.15;margin:4px 0 12px}
+text-decoration:none}.nav{display:flex;gap:18px;align-items:center}.nav a{color:var(--muted)}.eyebrow,.muted{color:var(--muted)}h1{font-size:34px;line-height:1.15;margin:4px 0 12px}
 h2{font-size:19px;margin:0 0 15px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:16px}
 .card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}.card{text-decoration:none}
 .card:hover{border-color:var(--accent)}.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;
@@ -28,7 +36,8 @@ gap:8px;flex-wrap:wrap;margin:12px 0}.layout{display:grid;grid-template-columns:
 .source a{color:var(--accent);overflow-wrap:anywhere}.facts li,.questions li{margin:7px 0}form{display:grid;gap:10px}
 select,textarea,button{width:100%;font:inherit;color:var(--text);background:#0b1118;border:1px solid var(--line);
 border-radius:9px;padding:10px}textarea{min-height:105px;resize:vertical}button{background:var(--accent);color:#07130e;
-font-weight:750;cursor:pointer}.feedback{border-top:1px solid var(--line);padding:12px 0}.empty{text-align:center;padding:70px 20px}
+font-weight:750;cursor:pointer}.feedback{border-top:1px solid var(--line);padding:12px 0}.rule{border-left:3px solid var(--accent);padding-left:12px}
+.rule.avoid{border-color:var(--warn)}pre{white-space:pre-wrap;font:13px/1.55 ui-monospace,SFMono-Regular,monospace;color:var(--muted)}.empty{text-align:center;padding:70px 20px}
 @media(max-width:780px){.layout{grid-template-columns:1fr}h1{font-size:28px}}
 """
 
@@ -40,8 +49,28 @@ def _page(title: str, body: str) -> HTMLResponse:
         f"<title>{escape(title)} · CodeQuest</title><style>{_STYLE}</style></head>"
         "<body><main class='shell'><header class='top'>"
         "<a class='brand' href='/'>CodeQuest Editorial</a>"
-        "<span class='muted'>Horizon fork spike</span></header>"
+        "<nav class='nav'><a href='/preferences'>Preferences</a>"
+        "<span class='muted'>Horizon fork spike</span></nav></header>"
         f"{body}</main></body></html>"
+    )
+
+
+def _rules_html(profile) -> str:
+    if not profile.rules:
+        return "<p class='muted'>No applicable preferences yet.</p>"
+    return "".join(
+        f"<article class='feedback rule {escape(rule.signal.value)}'>"
+        f"<span class='badge'>{escape(rule.signal.value)}</span> "
+        f"<span class='badge'>{escape(rule.dimension.replace('_', ' '))}</span> "
+        f"<span class='muted'>{escape(rule.scope.value.replace('_', ' '))}</span>"
+        f"<p>{escape(rule.instruction)}</p>"
+        + (
+            f"<small class='muted'>Repeated {rule.evidence_count} times</small>"
+            if rule.evidence_count > 1
+            else ""
+        )
+        + "</article>"
+        for rule in profile.rules
     )
 
 
@@ -77,6 +106,31 @@ def create_app(db_path: str | Path = "data/codequest-editorial.sqlite3") -> Fast
             f"<section class='grid'>{''.join(cards)}</section>",
         )
 
+    @app.get("/preferences", response_class=HTMLResponse)
+    def preferences() -> HTMLResponse:
+        sections = []
+        global_profile = build_preference_profile(store)
+        sections.append(
+            "<article class='panel'><p class='eyebrow'>ALL ARTICLES</p>"
+            f"<h2>Global preferences</h2>{_rules_html(global_profile)}</article>"
+        )
+        for article_type in ArticleType:
+            profile = build_preference_profile(store, article_type=article_type)
+            specific_rules = [rule for rule in profile.rules if rule.scope.value == "article_type"]
+            if not specific_rules:
+                continue
+            profile.rules = specific_rules
+            sections.append(
+                f"<article class='panel'><p class='eyebrow'>{escape(article_type.value.replace('_', ' ').upper())}</p>"
+                f"<h2>Article-type preferences</h2>{_rules_html(profile)}</article>"
+            )
+        return _page(
+            "Preferences",
+            "<p class='eyebrow'>EDITORIAL MEMORY</p><h1>Writing preferences</h1>"
+            "<p class='muted'>Only explicit, reusable feedback appears here. Story-only notes stay with their story.</p>"
+            f"<section class='stack'>{''.join(sections)}</section>",
+        )
+
     @app.get("/items/{content_item_id}", response_class=HTMLResponse)
     def detail(content_item_id: str) -> HTMLResponse:
         record = store.get_item(content_item_id)
@@ -85,6 +139,11 @@ def create_app(db_path: str | Path = "data/codequest-editorial.sqlite3") -> Fast
         packet = record.packet
         brief = packet.brief
         feedback = store.list_feedback(content_item_id)
+        preference_profile = build_preference_profile(
+            store,
+            article_type=brief.article_type,
+            content_item_id=content_item_id,
+        )
         sources = "".join(
             "<article class='source'>"
             f"<span class='badge'>{'primary' if source.is_primary else 'supporting'}</span>"
@@ -100,7 +159,9 @@ def create_app(db_path: str | Path = "data/codequest-editorial.sqlite3") -> Fast
             f"<li>{escape(question)}</li>" for question in packet.evidence.unresolved_questions
         ) or "<li>No open research gaps recorded.</li>"
         feedback_html = "".join(
-            f"<article class='feedback'><span class='badge'>{escape(str(entry['dimension']))}</span>"
+            f"<article class='feedback'><span class='badge'>{escape(str(entry['signal']))}</span> "
+            f"<span class='badge'>{escape(str(entry['dimension']))}</span> "
+            f"<span class='muted'>{escape(str(entry['scope']).replace('_', ' '))}</span>"
             f"<p>{escape(str(entry['note']))}</p><small class='muted'>{escape(str(entry['created_at']))}</small></article>"
             for entry in feedback
         ) or "<p class='muted'>No feedback yet.</p>"
@@ -112,6 +173,19 @@ def create_app(db_path: str | Path = "data/codequest-editorial.sqlite3") -> Fast
         dimension_options = "".join(
             f"<option value='{dimension}'>{escape(dimension.replace('_', ' ').title())}</option>"
             for dimension in FEEDBACK_DIMENSIONS
+        )
+        signal_options = "".join(
+            f"<option value='{signal}'>{escape(signal.title())}</option>"
+            for signal in FEEDBACK_SIGNALS
+        )
+        scope_labels = {
+            "story": "This story only",
+            "article_type": "This article type",
+            "global": "All articles",
+        }
+        scope_options = "".join(
+            f"<option value='{scope}'>{escape(scope_labels[scope])}</option>"
+            for scope in FEEDBACK_SCOPES
         )
         encoded_id = quote(content_item_id, safe="")
         return _page(
@@ -129,9 +203,14 @@ def create_app(db_path: str | Path = "data/codequest-editorial.sqlite3") -> Fast
             f"<form method='post' action='/items/{encoded_id}/status'><select name='status'>{status_options}</select>"
             "<button type='submit'>Update state</button></form></section>"
             "<section class='panel'><h2>Add feedback</h2>"
-            f"<form method='post' action='/items/{encoded_id}/feedback'><select name='dimension'>{dimension_options}</select>"
+            f"<form method='post' action='/items/{encoded_id}/feedback'>"
+            f"<select name='signal'>{signal_options}</select>"
+            f"<select name='dimension'>{dimension_options}</select>"
+            f"<select name='scope'>{scope_options}</select>"
             "<textarea name='note' required placeholder='What should the system learn or change?'></textarea>"
             "<button type='submit'>Save feedback</button></form></section>"
+            f"<section class='panel'><h2>Effective writing profile</h2>{_rules_html(preference_profile)}"
+            f"<pre>{escape(preference_profile.writer_instructions())}</pre></section>"
             f"<section class='panel'><h2>Feedback history</h2>{feedback_html}</section></aside></div>",
         )
 
@@ -149,10 +228,12 @@ def create_app(db_path: str | Path = "data/codequest-editorial.sqlite3") -> Fast
     def add_feedback(
         content_item_id: str,
         dimension: str = Form(),
+        signal: str = Form("prefer"),
+        scope: str = Form("story"),
         note: str = Form(),
     ) -> RedirectResponse:
         try:
-            store.add_feedback(content_item_id, dimension, note)
+            store.add_feedback(content_item_id, dimension, note, signal=signal, scope=scope)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Editorial item not found") from exc
         except ValueError as exc:
