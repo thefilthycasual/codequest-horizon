@@ -115,7 +115,7 @@ def test_workspace_generates_a_focused_three_platform_campaign(tmp_path) -> None
     assert {post.platform for post in posts} == set(SocialPlatform)
     assert "LinkedIn" in social_view.text
     assert "Facebook" in social_view.text
-    assert "Buffer · disabled" in social_view.text
+    assert "Buffer · setup needed" in social_view.text
     assert "WordPress · draft only" not in social_view.text
     assert "WordPress · draft only" in wordpress_view.text
     assert "test-social-writer" not in social_view.text

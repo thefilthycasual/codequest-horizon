@@ -1,10 +1,14 @@
 """CodeQuest editorial handoff built on Horizon discovery results."""
 
 from .briefing import build_editorial_packet
+from .buffer import BufferConfig, BufferPublisher, build_buffer_payload
 from .drafting import ArticleDraftGenerator, build_draft_prompt
 from .models import (
     ArticleDraft,
     ArticleType,
+    BufferDelivery,
+    BufferDeliveryMode,
+    BufferDeliveryStatus,
     DecisionOutcome,
     DraftParagraph,
     DraftDecision,
@@ -34,6 +38,11 @@ __all__ = [
     "ArticleDraft",
     "ArticleDraftGenerator",
     "ArticleType",
+    "BufferDelivery",
+    "BufferDeliveryMode",
+    "BufferDeliveryStatus",
+    "BufferConfig",
+    "BufferPublisher",
     "DecisionOutcome",
     "DraftDecision",
     "DraftParagraph",
@@ -56,6 +65,7 @@ __all__ = [
     "WordPressDeliveryStatus",
     "WordPressPublisher",
     "build_editorial_packet",
+    "build_buffer_payload",
     "build_draft_prompt",
     "build_preference_profile",
     "evaluate_draft",

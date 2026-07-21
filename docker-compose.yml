@@ -30,6 +30,13 @@ services:
       - WORDPRESS_USERNAME
       - WORDPRESS_APP_PASSWORD
       - WORDPRESS_DRY_RUN
+      - BUFFER_ACCESS_TOKEN
+      - BUFFER_API_KEY
+      - BUFFER_CHANNEL_ID_LINKEDIN
+      - BUFFER_CHANNEL_ID_X
+      - BUFFER_CHANNEL_ID_FACEBOOK
+      - BUFFER_SCHEDULE_TIMEZONE
+      - BUFFER_DRY_RUN
     ports:
       - "127.0.0.1:8765:8765"
     entrypoint: ["uv", "run", "codequest-workspace"]

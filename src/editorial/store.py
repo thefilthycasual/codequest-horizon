@@ -10,6 +10,9 @@ from pathlib import Path
 
 from .models import (
     ArticleDraft,
+    BufferDelivery,
+    BufferDeliveryMode,
+    BufferDeliveryStatus,
     DecisionOutcome,
     DraftDecision,
     DiscordApprovalRequest,
@@ -246,6 +249,29 @@ class EditorialStore:
                         ON DELETE CASCADE,
                     FOREIGN KEY (campaign_id)
                         REFERENCES social_campaigns(campaign_id)
+                        ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS buffer_deliveries (
+                    delivery_id TEXT PRIMARY KEY,
+                    content_item_id TEXT NOT NULL,
+                    campaign_id TEXT NOT NULL,
+                    post_id TEXT NOT NULL UNIQUE,
+                    status TEXT NOT NULL,
+                    delivery_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (content_item_id)
+                        REFERENCES editorial_items(content_item_id)
+                        ON DELETE CASCADE,
+                    FOREIGN KEY (campaign_id)
+                        REFERENCES social_campaigns(campaign_id)
+                        ON DELETE CASCADE,
+                    FOREIGN KEY (post_id)
+                        REFERENCES social_post_drafts(post_id)
                         ON DELETE CASCADE
                 )
                 """
@@ -493,6 +519,37 @@ class EditorialStore:
             ).fetchone()
         return SocialCampaign.model_validate_json(row["campaign_json"]) if row else None
 
+    def set_social_campaign_public_url(
+        self, campaign_id: str, public_article_url: str
+    ) -> SocialCampaign:
+        campaign = self.get_social_campaign_for_id(campaign_id)
+        if campaign is None:
+            raise KeyError(campaign_id)
+        with self._connect() as connection:
+            delivery_count = connection.execute(
+                "SELECT COUNT(*) AS total FROM buffer_deliveries WHERE campaign_id = ?",
+                (campaign_id,),
+            ).fetchone()["total"]
+        if (
+            campaign.public_article_url is not None
+            and str(campaign.public_article_url) != public_article_url
+            and delivery_count
+        ):
+            raise ValueError(
+                "The public URL cannot change after Buffer delivery has started."
+            )
+        campaign = SocialCampaign.model_validate(
+            {**campaign.model_dump(), "public_article_url": public_article_url}
+        )
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE social_campaigns SET campaign_json = ? WHERE campaign_id = ?",
+                (campaign.model_dump_json(), campaign_id),
+            )
+        if cursor.rowcount != 1:
+            raise KeyError(campaign_id)
+        return campaign
+
     def list_latest_social_posts(self, campaign_id: str) -> list[SocialPostDraft]:
         with self._connect() as connection:
             rows = connection.execute(
@@ -524,6 +581,14 @@ class EditorialStore:
         if latest is None or latest.post_id != parent_post_id:
             raise ValueError(
                 "The social draft changed while it was being edited. Reload and try again."
+            )
+        delivery = self.get_buffer_delivery(parent_post_id)
+        if delivery and delivery.status in {
+            BufferDeliveryStatus.PENDING,
+            BufferDeliveryStatus.UNCERTAIN,
+        }:
+            raise ValueError(
+                "This version may already be in Buffer and cannot be replaced until reconciled."
             )
         if (
             post.parent_post_id != parent_post_id
@@ -558,6 +623,13 @@ class EditorialStore:
         versions = self.list_social_post_versions(post.campaign_id, post.platform)
         if not versions or versions[0].post_id != post_id:
             raise ValueError("Only the latest social draft can receive a review decision.")
+        delivery = self.get_buffer_delivery(post_id)
+        if delivery and delivery.status in {
+            BufferDeliveryStatus.PENDING,
+            BufferDeliveryStatus.UNCERTAIN,
+            BufferDeliveryStatus.DELIVERED,
+        }:
+            raise ValueError("Buffer delivery has started, so this review state is locked.")
         post.status = status
         with self._connect() as connection:
             cursor = connection.execute(
@@ -633,6 +705,149 @@ class EditorialStore:
         if row is None:
             raise KeyError(post_id)
         return SocialPostDraft.model_validate_json(row["post_json"])
+
+    def begin_buffer_delivery(
+        self,
+        post: SocialPostDraft,
+        channel_id: str,
+        mode: BufferDeliveryMode,
+        final_text: str,
+        scheduled_for: datetime | None,
+    ) -> BufferDelivery:
+        """Persist an exact delivery intent before any network mutation."""
+
+        campaign = self.get_social_campaign_for_id(post.campaign_id)
+        versions = self.list_social_post_versions(post.campaign_id, post.platform)
+        if campaign is None or campaign.public_article_url is None:
+            raise ValueError("Confirm the public article URL before Buffer delivery.")
+        if not versions or versions[0].post_id != post.post_id:
+            raise ValueError("Only the latest social version can be delivered to Buffer.")
+        if post.status != SocialPostStatus.APPROVED:
+            raise ValueError("Approve this exact social version before Buffer delivery.")
+        existing = self.get_buffer_delivery(post.post_id)
+        if existing:
+            if existing.status == BufferDeliveryStatus.DELIVERED:
+                return existing
+            if existing.status in {
+                BufferDeliveryStatus.PENDING,
+                BufferDeliveryStatus.UNCERTAIN,
+            }:
+                raise ValueError(
+                    "This delivery may already exist in Buffer. "
+                    "Reconcile it there before doing anything else."
+                )
+            if (
+                existing.channel_id != channel_id
+                or existing.mode != mode
+                or existing.final_text != final_text
+                or existing.scheduled_for != scheduled_for
+            ):
+                raise ValueError(
+                    "The failed delivery intent changed. Save a new social version before retrying."
+                )
+            existing.status = BufferDeliveryStatus.PENDING
+            existing.attempts += 1
+            existing.error_message = ""
+            existing.updated_at = datetime.now(timezone.utc)
+            self._save_buffer_delivery(existing)
+            return existing
+        delivery = BufferDelivery(
+            content_item_id=post.content_item_id,
+            campaign_id=post.campaign_id,
+            post_id=post.post_id,
+            platform=post.platform,
+            channel_id=channel_id,
+            mode=mode,
+            final_text=final_text,
+            scheduled_for=scheduled_for,
+        )
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO buffer_deliveries "
+                "(delivery_id, content_item_id, campaign_id, post_id, status, delivery_json, "
+                "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    delivery.delivery_id,
+                    delivery.content_item_id,
+                    delivery.campaign_id,
+                    delivery.post_id,
+                    delivery.status.value,
+                    delivery.model_dump_json(),
+                    delivery.created_at.isoformat(),
+                    delivery.updated_at.isoformat(),
+                ),
+            )
+        return delivery
+
+    def get_buffer_delivery(self, post_id: str) -> BufferDelivery | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT delivery_json FROM buffer_deliveries WHERE post_id = ?",
+                (post_id,),
+            ).fetchone()
+        return BufferDelivery.model_validate_json(row["delivery_json"]) if row else None
+
+    def complete_buffer_delivery(
+        self,
+        delivery_id: str,
+        buffer_post_id: str,
+        buffer_status: str,
+        buffer_due_at: datetime | None,
+    ) -> BufferDelivery:
+        delivery = self._get_buffer_delivery_by_id(delivery_id)
+        delivery.status = BufferDeliveryStatus.DELIVERED
+        delivery.buffer_post_id = buffer_post_id
+        delivery.buffer_status = buffer_status
+        delivery.buffer_due_at = buffer_due_at
+        delivery.error_message = ""
+        delivery.updated_at = datetime.now(timezone.utc)
+        self._save_buffer_delivery(delivery)
+        return delivery
+
+    def fail_buffer_delivery(
+        self, delivery_id: str, error_message: str
+    ) -> BufferDelivery:
+        delivery = self._get_buffer_delivery_by_id(delivery_id)
+        delivery.status = BufferDeliveryStatus.FAILED
+        delivery.error_message = error_message.strip()[:500]
+        delivery.updated_at = datetime.now(timezone.utc)
+        self._save_buffer_delivery(delivery)
+        return delivery
+
+    def mark_buffer_delivery_uncertain(
+        self, delivery_id: str, error_message: str
+    ) -> BufferDelivery:
+        delivery = self._get_buffer_delivery_by_id(delivery_id)
+        delivery.status = BufferDeliveryStatus.UNCERTAIN
+        delivery.error_message = error_message.strip()[:500]
+        delivery.updated_at = datetime.now(timezone.utc)
+        self._save_buffer_delivery(delivery)
+        return delivery
+
+    def _get_buffer_delivery_by_id(self, delivery_id: str) -> BufferDelivery:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT delivery_json FROM buffer_deliveries WHERE delivery_id = ?",
+                (delivery_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(delivery_id)
+        return BufferDelivery.model_validate_json(row["delivery_json"])
+
+    def _save_buffer_delivery(self, delivery: BufferDelivery) -> None:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE buffer_deliveries SET status = ?, delivery_json = ?, updated_at = ? "
+                "WHERE delivery_id = ?",
+                (
+                    delivery.status.value,
+                    delivery.model_dump_json(),
+                    delivery.updated_at.isoformat(),
+                    delivery.delivery_id,
+                ),
+            )
+        if cursor.rowcount != 1:
+            raise KeyError(delivery.delivery_id)
 
     def record_decision(self, decision: DraftDecision) -> None:
         latest_draft = self.get_latest_draft(decision.content_item_id)

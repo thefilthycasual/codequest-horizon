@@ -256,6 +256,7 @@ class SocialCampaign(BaseModel):
     article_draft_id: str
     generator_model: str
     preference_snapshot: dict[str, list[str]] = Field(default_factory=dict)
+    public_article_url: HttpUrl | None = None
     prompt_version: str = "codequest-social-v1"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -277,3 +278,41 @@ class SocialPostDraft(BaseModel):
     generator_model: str
     prompt_version: str = "codequest-social-v1"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class BufferDeliveryMode(str, Enum):
+    """Explicit Buffer scheduling choices exposed to an editor."""
+
+    SHARE_NOW = "shareNow"
+    CUSTOM_SCHEDULED = "customScheduled"
+
+
+class BufferDeliveryStatus(str, Enum):
+    """Durable delivery state, including ambiguous network outcomes."""
+
+    PENDING = "pending"
+    DELIVERED = "delivered"
+    FAILED = "failed"
+    UNCERTAIN = "uncertain"
+
+
+class BufferDelivery(BaseModel):
+    """One guarded delivery attempt for one exact approved social version."""
+
+    delivery_id: str = Field(default_factory=lambda: f"buffer_{uuid4().hex}")
+    content_item_id: str
+    campaign_id: str
+    post_id: str
+    platform: SocialPlatform
+    channel_id: str
+    mode: BufferDeliveryMode
+    final_text: str
+    scheduled_for: datetime | None = None
+    status: BufferDeliveryStatus = BufferDeliveryStatus.PENDING
+    attempts: int = 1
+    buffer_post_id: str | None = None
+    buffer_status: str | None = None
+    buffer_due_at: datetime | None = None
+    error_message: str = ""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

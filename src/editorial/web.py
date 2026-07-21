@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 from html import escape
 from pathlib import Path
 from typing import Callable
@@ -17,6 +19,16 @@ from .discord import (
     revision_modal,
     verify_discord_signature,
 )
+from .buffer import (
+    BufferConfig,
+    BufferDeliveryRejected,
+    BufferDeliveryUncertain,
+    BufferPublisher,
+    build_buffer_payload,
+    build_buffer_text,
+    normalize_public_article_url,
+    parse_scheduled_time,
+)
 
 from .drafting import (
     ArticleDraftGenerator,
@@ -26,6 +38,8 @@ from .drafting import (
 from .models import (
     ArticleDraft,
     ArticleType,
+    BufferDeliveryMode,
+    BufferDeliveryStatus,
     DecisionOutcome,
     DiscordApprovalRequest,
     DiscordApprovalStatus,
@@ -36,6 +50,7 @@ from .models import (
     SocialPlatform,
     SocialPostDraft,
     SocialPostStatus,
+    WordPressDeliveryStatus,
 )
 from .preferences import build_preference_profile
 from .quality import evaluate_draft
@@ -88,7 +103,7 @@ background:var(--success);border-color:var(--success)}.badge.ready_for_approval{
 border-color:#ffd2b6}.badge.needs_revision,.badge.avoid,.badge.warning{color:var(--warning);
 background:#fff7ed;border-color:#fed7aa}.badge.block{color:var(--danger);background:#fef2f2;border-color:#fecaca}.meta{display:flex;
 align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0}.layout{display:grid;grid-template-columns:minmax(0,1.55fr)
-minmax(310px,.75fr);gap:20px;align-items:start}.stack{display:grid;gap:20px}.panel{box-shadow:0 1px 2px rgba(17,24,39,.02)}
+minmax(310px,.75fr);gap:20px;align-items:start}.layout>*,.stack>*{min-width:0}.stack{display:grid;gap:20px}.panel{box-shadow:0 1px 2px rgba(17,24,39,.02)}
 .source{padding:18px 0;border-top:1px solid var(--line)}.source:first-of-type{border-top:0}.source a{color:#c75b17;
 overflow-wrap:anywhere}.facts li,.questions li{margin:7px 0}form{display:grid;gap:10px}form+form{margin-top:14px}
 select,input,textarea,button{width:100%;font:inherit;border:1px solid #d9dde3;border-radius:12px;padding:11px 13px}
@@ -96,7 +111,7 @@ select,input,textarea{color:var(--ink);background:#fff}textarea{min-height:108px
 color:#fff;font-weight:750;cursor:pointer;border-color:var(--ink);border-radius:999px}button:hover{filter:brightness(1.08)}
 button:disabled{opacity:.45;cursor:not-allowed}.button-approve{background:var(--accent);border-color:var(--accent)}
 .button-revise{background:#fff;color:var(--ink);border-color:#cfd4dc}.feedback{border-top:1px solid var(--line);padding:14px 0}
-.rule{border-left:3px solid var(--success);padding-left:13px}.rule.avoid{border-color:var(--accent)}pre{white-space:pre-wrap;
+.rule{border-left:3px solid var(--success);padding-left:13px}.rule.avoid{border-color:var(--accent)}pre{max-width:100%;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere;
 font:12px/1.6 ui-monospace,SFMono-Regular,monospace;color:var(--muted);background:#f8f9fa;border-radius:12px;padding:14px}
 .panel.draft{padding:32px}.draft h2{font-size:30px;line-height:1.15}.draft .dek{font-size:17px}.quality-check{display:grid;
 grid-template-columns:auto 1fr;gap:10px;padding:12px 0;border-top:1px solid var(--line)}.quality-check:first-of-type{border-top:0}
@@ -137,6 +152,7 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 .subtabs{display:flex;gap:18px;border-bottom:1px solid var(--line);margin:-2px 0 20px}.subtab{padding:9px 2px 11px;text-decoration:none;color:var(--muted);font-weight:750;border-bottom:2px solid transparent}
 .subtab.active{color:var(--ink);border-bottom-color:var(--accent)}.social-list{display:grid;gap:16px}.social-card textarea{min-height:142px}.social-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}
 .social-head .badge.draft{padding:4px 9px;background:#f3f4f6}.social-meta{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:12px;margin:8px 0 14px}.inline-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.buffer-lock{border-style:dashed}
+.delivery-actions{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}.delivery-actions .text-link{display:inline-block;margin-bottom:10px}.delivery-state{margin-top:18px;padding:14px;border-radius:12px;background:#f8f9fa}.payload-copy{font-size:16px;white-space:pre-wrap;overflow-wrap:anywhere}.payload-table{display:grid;gap:8px}.payload-row{display:flex;justify-content:space-between;gap:20px;min-width:0;border-top:1px solid var(--line);padding-top:8px}.payload-row code{min-width:0;overflow-wrap:anywhere;word-break:break-all;text-align:right}.panel .text-link{overflow-wrap:anywhere}
 @media(max-width:980px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:820px){.sidebar{position:static;width:auto;padding:12px}.workspace{padding-bottom:12px;margin-bottom:8px}.workspace small,.nav-label,.sidebar-foot{display:none}
 .side-nav{display:flex;overflow:auto}.nav-item{white-space:nowrap}.content{margin-left:0}.shell{padding:30px 18px 70px}.story-tabs{border-radius:10px}.story-tab{padding:8px 12px}}
@@ -265,6 +281,8 @@ def create_app(
     discord_bridge_factory: Callable[[], DiscordApprovalBridge] | None = None,
     wordpress_publisher_factory: Callable[[], WordPressPublisher] | None = None,
     social_generator_factory: Callable[[], SocialCampaignGenerator] | None = None,
+    buffer_config_factory: Callable[[], BufferConfig] | None = None,
+    buffer_publisher_factory: Callable[[], BufferPublisher] | None = None,
 ) -> FastAPI:
     app = FastAPI(title="CodeQuest Editorial Workspace")
     store = EditorialStore(db_path)
@@ -276,6 +294,10 @@ def create_app(
         lambda: WordPressPublisher(WordPressConfig.from_env())
     )
     social_writer_factory = social_generator_factory or create_ollama_cloud_social_generator
+    buffer_settings_factory = buffer_config_factory or BufferConfig.from_env
+    buffer_sender_factory = buffer_publisher_factory or (
+        lambda: BufferPublisher(buffer_settings_factory())
+    )
 
     def approved_draft(content_item_id: str):
         record = store.get_item(content_item_id)
@@ -295,6 +317,51 @@ def create_app(
                 detail="The exact latest draft must be approved in the workspace first.",
             )
         return record, draft
+
+    def approved_social_post(content_item_id: str, post_id: str):
+        _record, draft = approved_draft(content_item_id)
+        campaign = store.get_social_campaign(draft.draft_id)
+        if campaign is None:
+            raise HTTPException(status_code=409, detail="Generate a social campaign first.")
+        posts = store.list_latest_social_posts(campaign.campaign_id)
+        post = next((item for item in posts if item.post_id == post_id), None)
+        if post is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Only the latest social version can be delivered to Buffer.",
+            )
+        if post.status != SocialPostStatus.APPROVED:
+            raise HTTPException(
+                status_code=409,
+                detail="Approve this exact social version before Buffer delivery.",
+            )
+        return draft, campaign, post
+
+    def buffer_preview_data(
+        content_item_id: str,
+        post_id: str,
+        mode: str,
+        due_at: str,
+    ):
+        _draft, campaign, post = approved_social_post(content_item_id, post_id)
+        try:
+            selected_mode = BufferDeliveryMode(mode)
+            config = buffer_settings_factory()
+            scheduled_for = (
+                parse_scheduled_time(due_at, config.schedule_timezone)
+                if selected_mode == BufferDeliveryMode.CUSTOM_SCHEDULED
+                else None
+            )
+            payload = build_buffer_payload(
+                post,
+                campaign,
+                config,
+                selected_mode,
+                scheduled_for,
+            )
+        except (BufferDeliveryRejected, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return campaign, post, config, selected_mode, scheduled_for, payload
 
     @app.get("/", response_class=HTMLResponse)
     def overview() -> HTMLResponse:
@@ -616,10 +683,124 @@ def create_app(
                 "<h2>Draft delivery</h2><p class='muted'>Approve the latest article version in the Review tab before creating a WordPress draft.</p></section>"
             )
         if social_campaign:
+            try:
+                buffer_config = buffer_settings_factory()
+                buffer_config_error = ""
+            except BufferDeliveryRejected as exc:
+                buffer_config = None
+                buffer_config_error = str(exc)
+            wordpress_ready = bool(
+                wordpress_delivery
+                and wordpress_delivery.status == WordPressDeliveryStatus.DRAFT_CREATED
+            )
+            public_url_value = (
+                str(social_campaign.public_article_url)
+                if social_campaign.public_article_url
+                else ""
+            )
+            if social_campaign.public_article_url:
+                public_url_intro = (
+                    "<span class='badge approved'>Public URL confirmed</span>"
+                    f"<p><a class='text-link' href='{escape(public_url_value, quote=True)}' target='_blank' rel='noopener'>{escape(public_url_value)}</a></p>"
+                )
+            elif wordpress_ready:
+                public_url_intro = (
+                    "<span class='badge warning'>Awaiting publication</span>"
+                    "<p class='muted'>Publish the WordPress draft manually, then confirm its public URL here. Buffer remains locked until then.</p>"
+                )
+            else:
+                public_url_intro = (
+                    "<span class='badge warning'>Website delivery required</span>"
+                    "<p class='muted'>Create the WordPress draft first. After it is manually published, return here to confirm its public URL.</p>"
+                )
+            public_url_form = (
+                f"<form method='post' action='/items/{encoded_id}/social/public-url'>"
+                f"<input type='url' name='public_url' required value='{escape(public_url_value, quote=True)}' placeholder='https://www.mycodequest.net/article-slug/'>"
+                f"<button type='submit'>{'Update' if public_url_value else 'Confirm'} public article URL</button></form>"
+                if wordpress_ready
+                else ""
+            )
+            public_url_panel = (
+                "<section class='panel'><h2>Published article URL</h2>"
+                f"{public_url_intro}{public_url_form}</section>"
+            )
             social_cards = []
             for post in sorted(social_posts, key=lambda item: item.platform.value):
                 source_value = ", ".join(post.source_ids)
                 limit = PLATFORM_LIMITS[post.platform]
+                buffer_delivery = store.get_buffer_delivery(post.post_id)
+                delivery_locks_review = bool(
+                    buffer_delivery
+                    and buffer_delivery.status
+                    in {
+                        BufferDeliveryStatus.PENDING,
+                        BufferDeliveryStatus.UNCERTAIN,
+                        BufferDeliveryStatus.DELIVERED,
+                    }
+                )
+                locked_attribute = " disabled" if delivery_locks_review else ""
+                if buffer_delivery and buffer_delivery.status == BufferDeliveryStatus.DELIVERED:
+                    buffer_controls = (
+                        "<div class='delivery-state'><span class='badge approved'>Buffer delivered</span>"
+                        f"<p><strong>{escape(buffer_delivery.buffer_status or 'accepted')}</strong></p>"
+                        f"<small class='muted'>Buffer post {escape(buffer_delivery.buffer_post_id or '')} · {buffer_delivery.attempts} attempt(s)</small></div>"
+                    )
+                elif buffer_delivery and buffer_delivery.status == BufferDeliveryStatus.UNCERTAIN:
+                    buffer_controls = (
+                        "<div class='delivery-state'><span class='badge block'>Outcome uncertain</span>"
+                        f"<p>{escape(buffer_delivery.error_message)}</p>"
+                        "<small class='muted'>Automatic retry is blocked to prevent a duplicate. Check this channel in Buffer.</small></div>"
+                    )
+                elif buffer_delivery and buffer_delivery.status == BufferDeliveryStatus.PENDING:
+                    buffer_controls = (
+                        "<div class='delivery-state'><span class='badge warning'>Delivery pending</span>"
+                        "<p class='muted'>This request may already be in progress. Retry is blocked.</p></div>"
+                    )
+                elif post.status == SocialPostStatus.APPROVED and social_campaign.public_article_url and buffer_config:
+                    retry_query = ""
+                    retry_label = "Preview send now"
+                    if buffer_delivery and buffer_delivery.status == BufferDeliveryStatus.FAILED:
+                        retry_label = "Review failed delivery"
+                        retry_query = (
+                            f"&due_at={quote(buffer_delivery.scheduled_for.isoformat(), safe='')}"
+                            if buffer_delivery.scheduled_for
+                            else ""
+                        )
+                        retry_mode = buffer_delivery.mode.value
+                    else:
+                        retry_mode = BufferDeliveryMode.SHARE_NOW.value
+                    buffer_controls = (
+                        "<div class='delivery-actions'>"
+                        + (
+                            "<div class='delivery-state'><span class='badge block'>Last attempt failed</span>"
+                            f"<p>{escape(buffer_delivery.error_message)}</p></div>"
+                            if buffer_delivery
+                            else ""
+                        )
+                        + f"<a class='text-link' href='/items/{encoded_id}/buffer/{escape(post.post_id, quote=True)}/preview?mode={retry_mode}{retry_query}'>{retry_label} →</a>"
+                        + (
+                            f"<form method='get' action='/items/{encoded_id}/buffer/{escape(post.post_id, quote=True)}/preview'>"
+                            f"<input type='hidden' name='mode' value='{BufferDeliveryMode.CUSTOM_SCHEDULED.value}'>"
+                            f"<label class='field-label'>Schedule in {escape(buffer_config.schedule_timezone)}</label>"
+                            "<input type='datetime-local' name='due_at' required>"
+                            "<button class='button-revise' type='submit'>Preview scheduled delivery</button></form>"
+                            if not buffer_delivery
+                            else ""
+                        )
+                        + "</div>"
+                    )
+                elif post.status != SocialPostStatus.APPROVED:
+                    buffer_controls = (
+                        "<div class='delivery-state'><p class='muted'>Approve this exact copy before preparing Buffer delivery.</p></div>"
+                    )
+                elif buffer_config_error:
+                    buffer_controls = (
+                        f"<div class='delivery-state'><span class='badge block'>Buffer setup needed</span><p>{escape(buffer_config_error)}</p></div>"
+                    )
+                else:
+                    buffer_controls = (
+                        "<div class='delivery-state'><p class='muted'>Confirm the published article URL to unlock Buffer previews.</p></div>"
+                    )
                 social_cards.append(
                     "<article class='panel social-card'>"
                     f"<div class='social-head'><h2>{escape(_SOCIAL_LABELS[post.platform])}</h2>"
@@ -628,14 +809,15 @@ def create_app(
                     f"<span>{len(post.body)} / {limit} characters</span></div>"
                     f"<form method='post' action='/items/{encoded_id}/social/{post.platform.value}/edit'>"
                     f"<input type='hidden' name='base_post_id' value='{escape(post.post_id, quote=True)}'>"
-                    f"<textarea name='body' required maxlength='{limit}'>{escape(post.body)}</textarea>"
+                    f"<textarea name='body' required maxlength='{limit}'{locked_attribute}>{escape(post.body)}</textarea>"
                     "<label class='field-label'>Supporting evidence IDs</label>"
-                    f"<input name='source_ids' required value='{escape(source_value, quote=True)}'>"
-                    "<input name='edit_note' required placeholder='What changed in this version?'>"
-                    "<button class='button-revise' type='submit'>Save new version</button></form>"
+                    f"<input name='source_ids' required value='{escape(source_value, quote=True)}'{locked_attribute}>"
+                    f"<input name='edit_note' required placeholder='What changed in this version?'{locked_attribute}>"
+                    f"<button class='button-revise' type='submit'{locked_attribute}>Save new version</button></form>"
                     f"<form class='inline-actions' method='post' action='/items/{encoded_id}/social/{escape(post.post_id, quote=True)}/decision'>"
-                    "<button class='button-approve' name='status' value='approved' type='submit'>Approve copy</button>"
-                    "<button class='button-revise' name='status' value='needs_revision' type='submit'>Needs revision</button></form>"
+                    f"<button class='button-approve' name='status' value='approved' type='submit'{locked_attribute}>Approve copy</button>"
+                    f"<button class='button-revise' name='status' value='needs_revision' type='submit'{locked_attribute}>Needs revision</button></form>"
+                    f"{buffer_controls}"
                     "</article>"
                 )
             approved_count = sum(
@@ -652,12 +834,21 @@ def create_app(
                 f"<option value='{platform.value}'>{escape(_SOCIAL_LABELS[platform])}</option>"
                 for platform in SocialPlatform
             )
+            if buffer_config is None:
+                buffer_badge_class = "block"
+                buffer_badge_label = "Buffer · setup needed"
+            elif buffer_config.dry_run:
+                buffer_badge_class = "warning"
+                buffer_badge_label = "Buffer · preview only"
+            else:
+                buffer_badge_class = "selected"
+                buffer_badge_label = "Buffer · guarded delivery"
             social_panel = (
-                "<section class='social-list'>"
+                f"{public_url_panel}<section class='social-list'>"
                 f"{''.join(social_cards)}</section>"
-                "<section class='panel buffer-lock'><span class='badge warning'>Buffer · disabled</span>"
+                f"<section class='panel buffer-lock'><span class='badge {buffer_badge_class}'>{buffer_badge_label}</span>"
                 f"<h2>{approved_count} of 3 posts approved</h2>"
-                "<p class='muted'>Scheduling stays locked until a later delivery increment adds a public article URL, payload preview, and an explicit send action.</p></section>"
+                "<p class='muted'>Each platform requires its own payload preview and explicit confirmation. Ambiguous network outcomes cannot be retried automatically.</p></section>"
                 "<div class='layout'><section class='panel'><h2>Social memory</h2>"
                 f"{learned_rules}</section><aside class='panel'><h2>Teach future campaigns</h2>"
                 f"<form method='post' action='/items/{encoded_id}/social/feedback'>"
@@ -1168,7 +1359,10 @@ def create_app(
             SocialPostStatus.NEEDS_REVISION,
         }:
             raise HTTPException(status_code=400, detail="Unsupported social decision.")
-        store.set_social_post_status(post_id, review_status)
+        try:
+            store.set_social_post_status(post_id, review_status)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         return RedirectResponse(
             f"/items/{quote(content_item_id, safe='')}?tab=delivery&channel=social",
             status_code=303,
@@ -1195,6 +1389,165 @@ def create_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/items/{quote(content_item_id, safe='')}?tab=delivery&channel=social",
+            status_code=303,
+        )
+
+    @app.post("/items/{content_item_id}/social/public-url")
+    def confirm_public_article_url(
+        content_item_id: str, public_url: str = Form()
+    ) -> RedirectResponse:
+        _record, draft = approved_draft(content_item_id)
+        campaign = store.get_social_campaign(draft.draft_id)
+        wordpress_delivery = store.get_wordpress_delivery(draft.draft_id)
+        if campaign is None:
+            raise HTTPException(status_code=409, detail="Generate a social campaign first.")
+        if (
+            wordpress_delivery is None
+            or wordpress_delivery.status != WordPressDeliveryStatus.DRAFT_CREATED
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Create the WordPress draft before confirming its public URL.",
+            )
+        try:
+            normalized = normalize_public_article_url(
+                public_url,
+                os.getenv("WORDPRESS_BASE_URL", ""),
+            )
+            store.set_social_campaign_public_url(campaign.campaign_id, normalized)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/items/{quote(content_item_id, safe='')}?tab=delivery&channel=social",
+            status_code=303,
+        )
+
+    @app.get(
+        "/items/{content_item_id}/buffer/{post_id}/preview",
+        response_class=HTMLResponse,
+    )
+    def preview_buffer_delivery(
+        content_item_id: str,
+        post_id: str,
+        mode: str,
+        due_at: str = "",
+    ) -> HTMLResponse:
+        campaign, post, config, selected_mode, scheduled_for, payload = buffer_preview_data(
+            content_item_id,
+            post_id,
+            mode,
+            due_at,
+        )
+        existing = store.get_buffer_delivery(post.post_id)
+        if existing and existing.status in {
+            BufferDeliveryStatus.PENDING,
+            BufferDeliveryStatus.UNCERTAIN,
+        }:
+            raise HTTPException(
+                status_code=409,
+                detail="This delivery may already exist in Buffer. Check Buffer before retrying.",
+            )
+        encoded_id = quote(content_item_id, safe="")
+        mode_label = (
+            "Send now"
+            if selected_mode == BufferDeliveryMode.SHARE_NOW
+            else "Schedule"
+        )
+        schedule_label = (
+            scheduled_for.isoformat() if scheduled_for else "Immediately after confirmation"
+        )
+        input_preview = json.dumps(payload["variables"]["input"], indent=2)
+        due_value = scheduled_for.isoformat() if scheduled_for else ""
+        confirmation = (
+            "<p class='muted'>Delivery is disabled because <code>BUFFER_DRY_RUN</code> is true.</p>"
+            "<button type='button' disabled>Buffer delivery disabled</button>"
+            if config.dry_run
+            else (
+                f"<form method='post' action='/items/{encoded_id}/buffer/{escape(post.post_id, quote=True)}'>"
+                f"<input type='hidden' name='mode' value='{selected_mode.value}'>"
+                f"<input type='hidden' name='due_at' value='{escape(due_value, quote=True)}'>"
+                f"<button class='button-approve' type='submit'>{mode_label} in Buffer</button></form>"
+            )
+        )
+        return _page(
+            f"Buffer preview · {_SOCIAL_LABELS[post.platform]}",
+            "<div class='crumb'><a href='/editorial'>Editorial queue</a><span>›</span>"
+            f"<a href='/items/{encoded_id}?tab=delivery&channel=social'>Social campaign</a><span>›</span><span>Buffer preview</span></div>"
+            "<header class='page-head'><p class='eyebrow'>BUFFER PAYLOAD PREVIEW</p>"
+            f"<h1>{escape(_SOCIAL_LABELS[post.platform])}: {escape(mode_label)}</h1>"
+            "<p class='muted'>Review the final linked copy and destination before the one explicit delivery action.</p></header>"
+            "<div class='layout'><section class='stack'><article class='panel'>"
+            "<h2>Final social copy</h2>"
+            f"<p class='payload-copy'>{escape(build_buffer_text(post, campaign))}</p></article>"
+            "<article class='panel'><h2>Mutation input</h2>"
+            f"<pre>{escape(input_preview)}</pre></article></section>"
+            "<aside class='stack'><section class='panel'><h2>Delivery summary</h2>"
+            "<div class='payload-table'>"
+            f"<div class='payload-row'><span>Platform</span><strong>{escape(_SOCIAL_LABELS[post.platform])}</strong></div>"
+            f"<div class='payload-row'><span>Mode</span><strong>{escape(mode_label)}</strong></div>"
+            f"<div class='payload-row'><span>When</span><code>{escape(schedule_label)}</code></div>"
+            f"<div class='payload-row'><span>Social version</span><code>{escape(post.post_id)}</code></div>"
+            f"<div class='payload-row'><span>Article version</span><code>{escape(campaign.article_draft_id)}</code></div>"
+            "</div></section><section class='panel'><span class='badge warning'>Final confirmation</span>"
+            "<h2>Ready?</h2><p class='muted'>This action creates a real Buffer post when dry-run is disabled.</p>"
+            f"{confirmation}</section></aside></div>",
+            active="editorial",
+        )
+
+    @app.post("/items/{content_item_id}/buffer/{post_id}")
+    async def deliver_to_buffer(
+        content_item_id: str,
+        post_id: str,
+        mode: str = Form(),
+        due_at: str = Form(""),
+    ) -> RedirectResponse:
+        campaign, post, config, selected_mode, scheduled_for, payload = buffer_preview_data(
+            content_item_id,
+            post_id,
+            mode,
+            due_at,
+        )
+        if config.dry_run:
+            raise HTTPException(
+                status_code=409,
+                detail="Buffer delivery is disabled while BUFFER_DRY_RUN is true.",
+            )
+        final_text = build_buffer_text(post, campaign)
+        try:
+            delivery = store.begin_buffer_delivery(
+                post,
+                config.channel_ids[post.platform],
+                selected_mode,
+                final_text,
+                scheduled_for,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if delivery.status == BufferDeliveryStatus.DELIVERED:
+            return RedirectResponse(
+                f"/items/{quote(content_item_id, safe='')}?tab=delivery&channel=social",
+                status_code=303,
+            )
+        try:
+            result = await buffer_sender_factory().create_post(payload)
+        except BufferDeliveryRejected as exc:
+            store.fail_buffer_delivery(delivery.delivery_id, str(exc))
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except BufferDeliveryUncertain as exc:
+            store.mark_buffer_delivery_uncertain(delivery.delivery_id, str(exc))
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            message = "Buffer delivery ended without a conclusive response. Check Buffer before retrying."
+            store.mark_buffer_delivery_uncertain(delivery.delivery_id, message)
+            raise HTTPException(status_code=502, detail=message) from exc
+        store.complete_buffer_delivery(
+            delivery.delivery_id,
+            result.post_id,
+            result.status,
+            result.due_at,
+        )
         return RedirectResponse(
             f"/items/{quote(content_item_id, safe='')}?tab=delivery&channel=social",
             status_code=303,
