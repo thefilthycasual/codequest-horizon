@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.editorial.briefing import build_editorial_packet
+from src.editorial.models import ArticleDraft, DraftParagraph, DraftSection
 from src.editorial.store import EditorialStore
 from src.editorial.web import create_app
 from src.models import ContentItem, SourceType
@@ -31,6 +32,29 @@ def _packet():
         },
     )
     return build_editorial_packet(item)
+
+
+class _StubDraftGenerator:
+    async def generate(self, packet, profile):
+        return ArticleDraft(
+            content_item_id=packet.brief.content_item_id,
+            title="A <script>grounded</script> review draft",
+            dek="A concise, evidence-linked summary.",
+            sections=[
+                DraftSection(
+                    heading="What changed",
+                    paragraphs=[
+                        DraftParagraph(
+                            text="The public beta is available today.",
+                            source_ids=["S1"],
+                        )
+                    ],
+                )
+            ],
+            source_map={"S1": packet.evidence.sources[0].url},
+            preference_rules=profile.rules,
+            generator_model="test-writer",
+        )
 
 
 def test_editorial_store_round_trip_and_feedback(tmp_path) -> None:
@@ -133,3 +157,37 @@ def test_workspace_returns_empty_state_and_missing_item(tmp_path) -> None:
 
     assert "No candidates yet" in client.get("/").text
     assert client.get("/items/missing").status_code == 404
+
+
+def test_workspace_generates_and_renders_unpublished_draft(tmp_path) -> None:
+    db_path = tmp_path / "editorial.sqlite3"
+    packet = _packet()
+    store = EditorialStore(db_path)
+    store.save_packet(packet)
+    store.set_status(packet.brief.content_item_id, "selected")
+    client = TestClient(create_app(db_path, draft_generator_factory=_StubDraftGenerator))
+
+    response = client.post(
+        f"/items/{packet.brief.content_item_id}/draft",
+        follow_redirects=False,
+    )
+    detail = client.get(f"/items/{packet.brief.content_item_id}")
+
+    assert response.status_code == 303
+    assert store.get_latest_draft(packet.brief.content_item_id) is not None
+    assert store.get_item(packet.brief.content_item_id).status == "selected"
+    assert "UNPUBLISHED REVIEW DRAFT" in detail.text
+    assert "test-writer" in detail.text
+    assert "&lt;script&gt;grounded" in detail.text
+    assert "<script>grounded" not in detail.text
+
+
+def test_workspace_blocks_draft_generation_for_candidate(tmp_path) -> None:
+    db_path = tmp_path / "editorial.sqlite3"
+    packet = _packet()
+    EditorialStore(db_path).save_packet(packet)
+    client = TestClient(create_app(db_path, draft_generator_factory=_StubDraftGenerator))
+
+    response = client.post(f"/items/{packet.brief.content_item_id}/draft")
+
+    assert response.status_code == 409

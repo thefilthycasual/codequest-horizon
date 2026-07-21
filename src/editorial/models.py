@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from enum import Enum
+from uuid import uuid4
 
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -113,3 +114,32 @@ class EditorialPreferenceProfile(BaseModel):
             "Use these as writing constraints, but never let them override factual evidence.",
         ]
         return "\n".join(lines)
+
+
+class DraftParagraph(BaseModel):
+    """One draft paragraph and the evidence sources supporting it."""
+
+    text: str = Field(min_length=1)
+    source_ids: list[str] = Field(min_length=1)
+
+
+class DraftSection(BaseModel):
+    """A reviewable article section made of source-linked paragraphs."""
+
+    heading: str = Field(min_length=1)
+    paragraphs: list[DraftParagraph] = Field(min_length=1)
+
+
+class ArticleDraft(BaseModel):
+    """Versioned, unpublished article output produced for human review."""
+
+    draft_id: str = Field(default_factory=lambda: f"draft_{uuid4().hex}")
+    content_item_id: str
+    title: str = Field(min_length=1)
+    dek: str = Field(min_length=1)
+    sections: list[DraftSection] = Field(min_length=1)
+    source_map: dict[str, HttpUrl]
+    preference_rules: list[PreferenceRule] = Field(default_factory=list)
+    generator_model: str
+    prompt_version: str = "codequest-draft-v1"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

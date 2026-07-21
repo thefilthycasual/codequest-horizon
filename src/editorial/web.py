@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from html import escape
 from pathlib import Path
+from typing import Callable
 from urllib.parse import quote
 
 from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from .drafting import (
+    ArticleDraftGenerator,
+    DraftGenerationError,
+    create_ollama_cloud_draft_generator,
+)
 from .models import ArticleType
 from .preferences import build_preference_profile
 from .store import (
@@ -34,6 +40,7 @@ padding:3px 9px;color:var(--accent);font-size:12px;text-transform:uppercase;lett
 gap:8px;flex-wrap:wrap;margin:12px 0}.layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.8fr);gap:18px}
 .stack{display:grid;gap:18px}.source{padding:14px 0;border-top:1px solid var(--line)}.source:first-of-type{border-top:0}
 .source a{color:var(--accent);overflow-wrap:anywhere}.facts li,.questions li{margin:7px 0}form{display:grid;gap:10px}
+form+form{margin-top:14px}
 select,textarea,button{width:100%;font:inherit;color:var(--text);background:#0b1118;border:1px solid var(--line);
 border-radius:9px;padding:10px}textarea{min-height:105px;resize:vertical}button{background:var(--accent);color:#07130e;
 font-weight:750;cursor:pointer}.feedback{border-top:1px solid var(--line);padding:12px 0}.rule{border-left:3px solid var(--accent);padding-left:12px}
@@ -74,9 +81,38 @@ def _rules_html(profile) -> str:
     )
 
 
-def create_app(db_path: str | Path = "data/codequest-editorial.sqlite3") -> FastAPI:
+def _draft_html(draft) -> str:
+    if draft is None:
+        return (
+            "<article class='panel'><h2>Article draft</h2>"
+            "<p class='muted'>No draft generated yet.</p></article>"
+        )
+    sections = []
+    for section in draft.sections:
+        paragraphs = []
+        for paragraph in section.paragraphs:
+            citations = " ".join(
+                f"<a class='badge' href='{escape(str(draft.source_map[source_id]), quote=True)}' "
+                f"target='_blank' rel='noopener'>{escape(source_id)}</a>"
+                for source_id in paragraph.source_ids
+            )
+            paragraphs.append(f"<p>{escape(paragraph.text)} {citations}</p>")
+        sections.append(f"<section><h3>{escape(section.heading)}</h3>{''.join(paragraphs)}</section>")
+    return (
+        "<article class='panel'><p class='eyebrow'>UNPUBLISHED REVIEW DRAFT</p>"
+        f"<h2>{escape(draft.title)}</h2><p class='muted'>{escape(draft.dek)}</p>"
+        f"{''.join(sections)}<small class='muted'>Generated with {escape(draft.generator_model)} · "
+        f"{escape(draft.prompt_version)} · {escape(draft.created_at.isoformat())}</small></article>"
+    )
+
+
+def create_app(
+    db_path: str | Path = "data/codequest-editorial.sqlite3",
+    draft_generator_factory: Callable[[], ArticleDraftGenerator] | None = None,
+) -> FastAPI:
     app = FastAPI(title="CodeQuest Editorial Workspace")
     store = EditorialStore(db_path)
+    writer_factory = draft_generator_factory or create_ollama_cloud_draft_generator
 
     @app.get("/", response_class=HTMLResponse)
     def inbox() -> HTMLResponse:
@@ -139,6 +175,7 @@ def create_app(db_path: str | Path = "data/codequest-editorial.sqlite3") -> Fast
         packet = record.packet
         brief = packet.brief
         feedback = store.list_feedback(content_item_id)
+        latest_draft = store.get_latest_draft(content_item_id)
         preference_profile = build_preference_profile(
             store,
             article_type=brief.article_type,
@@ -198,10 +235,19 @@ def create_app(db_path: str | Path = "data/codequest-editorial.sqlite3") -> Fast
             f"<h2>Audience value</h2><p>{escape(brief.audience_value)}</p></article>"
             f"<article class='panel'><h2>Required facts</h2><ul class='facts'>{facts}</ul>"
             f"<h2>Research gaps</h2><ul class='questions'>{questions}</ul></article>"
-            f"<article class='panel'><h2>Evidence</h2>{sources}</article></section>"
+            f"<article class='panel'><h2>Evidence</h2>{sources}</article>"
+            f"{_draft_html(latest_draft)}</section>"
             "<aside class='stack'><section class='panel'><h2>Review state</h2>"
             f"<form method='post' action='/items/{encoded_id}/status'><select name='status'>{status_options}</select>"
-            "<button type='submit'>Update state</button></form></section>"
+            "<button type='submit'>Update state</button></form>"
+            + (
+                f"<form method='post' action='/items/{encoded_id}/draft'>"
+                "<button type='submit'>Generate review draft</button>"
+                "<small class='muted'>Uses Ollama Cloud and remains unpublished.</small></form>"
+                if record.status in {"selected", "needs_revision"}
+                else "<p class='muted'>Select this story before generating a draft.</p>"
+            )
+            + "</section>"
             "<section class='panel'><h2>Add feedback</h2>"
             f"<form method='post' action='/items/{encoded_id}/feedback'>"
             f"<select name='signal'>{signal_options}</select>"
@@ -222,6 +268,33 @@ def create_app(db_path: str | Path = "data/codequest-editorial.sqlite3") -> Fast
             raise HTTPException(status_code=404, detail="Editorial item not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(f"/items/{quote(content_item_id, safe='')}", status_code=303)
+
+    @app.post("/items/{content_item_id}/draft")
+    async def generate_draft(content_item_id: str) -> RedirectResponse:
+        record = store.get_item(content_item_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Editorial item not found")
+        if record.status not in {"selected", "needs_revision"}:
+            raise HTTPException(
+                status_code=409,
+                detail="Draft generation requires a Selected or Needs Revision story.",
+            )
+        profile = build_preference_profile(
+            store,
+            record.packet.brief.article_type,
+            content_item_id,
+        )
+        try:
+            draft = await writer_factory().generate(record.packet, profile)
+        except DraftGenerationError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail="Ollama Cloud generation failed; no draft was saved.",
+            ) from exc
+        store.save_draft(draft)
         return RedirectResponse(f"/items/{quote(content_item_id, safe='')}", status_code=303)
 
     @app.post("/items/{content_item_id}/feedback")

@@ -18,6 +18,10 @@ services:
     container_name: codequest-editorial
     volumes:
       - ./data:/app/data
+    environment:
+      - OLLAMA_BASE_URL
+      - OLLAMA_API_KEY
+      - OLLAMA_MODEL_WRITER
     ports:
       - "127.0.0.1:8765:8765"
     entrypoint: ["uv", "run", "codequest-workspace"]

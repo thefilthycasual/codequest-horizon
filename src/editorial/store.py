@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .models import EditorialPacket, PreferenceScope, PreferenceSignal
+from .models import ArticleDraft, EditorialPacket, PreferenceScope, PreferenceSignal
 
 
 EDITORIAL_STATUSES = (
@@ -104,6 +104,19 @@ class EditorialStore:
                     "ALTER TABLE editorial_feedback "
                     "ADD COLUMN scope TEXT NOT NULL DEFAULT 'story'"
                 )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS editorial_drafts (
+                    draft_id TEXT PRIMARY KEY,
+                    content_item_id TEXT NOT NULL,
+                    draft_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (content_item_id)
+                        REFERENCES editorial_items(content_item_id)
+                        ON DELETE CASCADE
+                )
+                """
+            )
 
     def save_packet(self, packet: EditorialPacket, status: str = "candidate") -> None:
         self._validate_status(status)
@@ -184,6 +197,39 @@ class EditorialStore:
                 (content_item_id,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def save_draft(self, draft: ArticleDraft) -> None:
+        if self.get_item(draft.content_item_id) is None:
+            raise KeyError(draft.content_item_id)
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO editorial_drafts "
+                "(draft_id, content_item_id, draft_json, created_at) VALUES (?, ?, ?, ?)",
+                (
+                    draft.draft_id,
+                    draft.content_item_id,
+                    draft.model_dump_json(),
+                    draft.created_at.isoformat(),
+                ),
+            )
+
+    def get_latest_draft(self, content_item_id: str) -> ArticleDraft | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT draft_json FROM editorial_drafts WHERE content_item_id = ? "
+                "ORDER BY created_at DESC, draft_id DESC LIMIT 1",
+                (content_item_id,),
+            ).fetchone()
+        return ArticleDraft.model_validate_json(row["draft_json"]) if row else None
+
+    def list_drafts(self, content_item_id: str) -> list[ArticleDraft]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT draft_json FROM editorial_drafts WHERE content_item_id = ? "
+                "ORDER BY created_at DESC, draft_id DESC",
+                (content_item_id,),
+            ).fetchall()
+        return [ArticleDraft.model_validate_json(row["draft_json"]) for row in rows]
 
     def list_applicable_feedback(
         self,
