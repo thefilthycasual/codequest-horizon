@@ -45,6 +45,7 @@ data/mcp.secrets.json
 data/mcp-secrets.json
 data/mcp-runs/
 data/x_cookies_*.json
+data/codequest-editorial.sqlite3*
 
 docs/_posts/*.md
 

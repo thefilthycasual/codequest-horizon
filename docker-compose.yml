@@ -11,3 +11,15 @@ services:
     # Run daily at 8:00 AM UTC (adjust as needed)
     # For one-time run, use: docker compose run --rm horizon
     command: ["--hours", "24"]
+
+  editorial:
+    profiles: ["editorial"]
+    build: .
+    container_name: codequest-editorial
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "127.0.0.1:8765:8765"
+    entrypoint: ["uv", "run", "codequest-workspace"]
+    command: ["serve", "--host", "0.0.0.0", "--port", "8765"]
+    restart: unless-stopped

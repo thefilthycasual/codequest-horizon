@@ -1,0 +1,43 @@
+"""Import Horizon stories and run the CodeQuest editorial workspace."""
+
+import argparse
+from pathlib import Path
+
+import uvicorn
+
+from ..models import ContentItem
+from .briefing import build_editorial_packet
+from .store import EditorialStore
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--db", default="data/codequest-editorial.sqlite3")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    import_parser = subparsers.add_parser("import", help="Import one Horizon ContentItem JSON file")
+    import_parser.add_argument("input")
+
+    serve_parser = subparsers.add_parser("serve", help="Run the local editorial workspace")
+    serve_parser.add_argument("--host", default="127.0.0.1")
+    serve_parser.add_argument("--port", type=int, default=8765)
+
+    args = parser.parse_args()
+    if args.command == "import":
+        item = ContentItem.model_validate_json(Path(args.input).read_text(encoding="utf-8"))
+        EditorialStore(args.db).save_packet(build_editorial_packet(item))
+        print(f"Imported {item.id} into {args.db}")
+        return 0
+
+    uvicorn.run(
+        "src.editorial.web:create_app",
+        factory=True,
+        host=args.host,
+        port=args.port,
+        reload=False,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -20,6 +20,9 @@ dependencies = [
     "beautifulsoup4>=4.12.0",
     "markdown>=3.10.2",
     "mcp>=1.0.0",
+    "fastapi>=0.128.0",
+    "python-multipart>=0.0.20",
+    "uvicorn>=0.40.0",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +48,7 @@ horizon-mcp = "src.mcp.server:main"
 horizon-wizard = "src.setup.wizard:main"
 horizon-webhook = "src.services.webhook_cli:main"
 codequest-brief = "src.editorial.cli:main"
+codequest-workspace = "src.editorial.workspace_cli:main"
 
 [build-system]
 requires = ["hatchling"]
