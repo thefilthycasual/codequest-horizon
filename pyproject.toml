@@ -44,6 +44,7 @@ horizon = "src.main:main"
 horizon-mcp = "src.mcp.server:main"
 horizon-wizard = "src.setup.wizard:main"
 horizon-webhook = "src.services.webhook_cli:main"
+codequest-brief = "src.editorial.cli:main"
 
 [build-system]
 requires = ["hatchling"]
