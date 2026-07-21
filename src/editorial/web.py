@@ -119,9 +119,13 @@ border-radius:14px;padding:20px}.stat-card small{color:var(--muted)}.stat-value{
 border-radius:999px;text-decoration:none;font-weight:750;background:#fff}.editor-section{display:grid;gap:12px}.editor-paragraph{padding:16px;border:1px solid var(--line);
 border-radius:12px;background:#fafafa}.field-label{display:block;font-size:12px;font-weight:800;color:#565d68;margin-bottom:5px}.version{padding:11px 0;border-top:1px solid var(--line)}
 .version:first-of-type{border-top:0}.version code{font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+.story-tabs{display:flex;gap:6px;padding:6px;background:#eceef1;border-radius:13px;margin:0 0 24px;overflow:auto}.story-tab{display:flex;align-items:center;
+gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.story-tab:hover{background:rgba(255,255,255,.65)}
+.story-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}.story-tab .count{font-size:10px;padding:1px 6px;border-radius:999px;background:#e8e9ec;color:#737985}
+.story-tab.active .count{background:var(--accent-soft);color:#c75b17}.tab-intro{display:flex;justify-content:space-between;gap:20px;align-items:end;margin-bottom:18px}.tab-intro p{margin:0}
 @media(max-width:980px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:820px){.sidebar{position:static;width:auto;padding:12px}.workspace{padding-bottom:12px;margin-bottom:8px}.workspace small,.nav-label,.sidebar-foot{display:none}
-.side-nav{display:flex;overflow:auto}.nav-item{white-space:nowrap}.content{margin-left:0}.shell{padding:30px 18px 70px}}
+.side-nav{display:flex;overflow:auto}.nav-item{white-space:nowrap}.content{margin-left:0}.shell{padding:30px 18px 70px}.story-tabs{border-radius:10px}.story-tab{padding:8px 12px}}
 @media(max-width:480px){.stat-grid{grid-template-columns:1fr 1fr}.nav-item{font-size:13px;padding:9px}.nav-icon{display:none}}
 """
 
@@ -378,7 +382,10 @@ def create_app(
         )
 
     @app.get("/items/{content_item_id}", response_class=HTMLResponse)
-    def detail(content_item_id: str) -> HTMLResponse:
+    def detail(content_item_id: str, tab: str = "overview") -> HTMLResponse:
+        allowed_tabs = {"overview", "editor", "review", "delivery", "learning"}
+        if tab not in allowed_tabs:
+            raise HTTPException(status_code=404, detail="Story tab not found")
         record = store.get_item(content_item_id)
         if not record:
             raise HTTPException(status_code=404, detail="Editorial item not found")
@@ -484,65 +491,67 @@ def create_app(
                 review_controls += (
                     "<p class='muted'>This edited version requires a fresh editorial decision.</p>"
                 )
-        if latest_draft and quality_report:
-            approval_actions = ""
-            if record.status != "approved" and not (
-                decision_for_latest
-                and decision_for_latest.outcome == DecisionOutcome.NEEDS_REVISION
-            ):
-                approval_actions = (
-                    f"<form method='post' action='/items/{encoded_id}/decision'>"
-                    "<textarea name='notes' placeholder='Approval note or required revisions'></textarea>"
-                    f"<button class='button-approve' name='outcome' value='approved' type='submit'"
-                    f"{' disabled' if not quality_report.can_approve else ''}>Approve in workspace</button>"
-                    "<button class='button-revise' name='outcome' value='needs_revision' type='submit'>"
-                    "Request revision</button></form>"
+        approval_actions = ""
+        if latest_draft and quality_report and record.status != "approved" and not (
+            decision_for_latest
+            and decision_for_latest.outcome == DecisionOutcome.NEEDS_REVISION
+        ):
+            approval_actions = (
+                f"<form method='post' action='/items/{encoded_id}/decision'>"
+                "<textarea name='notes' placeholder='Approval note or required revisions'></textarea>"
+                f"<button class='button-approve' name='outcome' value='approved' type='submit'"
+                f"{' disabled' if not quality_report.can_approve else ''}>Approve in workspace</button>"
+                "<button class='button-revise' name='outcome' value='needs_revision' type='submit'>"
+                "Request revision</button></form>"
+            )
+        quality_panel = (
+            "<section class='panel'><h2>Quality gate</h2>"
+            f"{_quality_html(quality_report)}</section>"
+            if quality_report
+            else "<section class='panel'><h2>Quality gate</h2><p class='muted'>Generate a draft to run deterministic checks.</p></section>"
+        )
+        decision_panel = (
+            "<section class='panel'><h2>Editorial decision</h2>"
+            f"{_decision_html(decision_for_latest)}{approval_actions}</section>"
+            if latest_draft
+            else "<section class='panel'><h2>Editorial decision</h2><p class='muted'>A decision becomes available after drafting.</p></section>"
+        )
+        if discord_request and discord_request.status == DiscordApprovalStatus.PENDING:
+            discord_controls = (
+                "<p><strong>Shared with Discord for optional feedback</strong></p>"
+                f"<small class='muted'>Request {escape(discord_request.request_id)}</small>"
+            )
+        elif discord_request and discord_request.status == DiscordApprovalStatus.DELIVERY_FAILED:
+            discord_controls = (
+                "<p class='muted'>The last delivery failed. Check the Discord settings and retry.</p>"
+                f"<form method='post' action='/items/{encoded_id}/discord'><button type='submit'>Retry Discord delivery</button></form>"
+            )
+        elif discord_request and discord_request.status in {
+            DiscordApprovalStatus.ENDORSED,
+            DiscordApprovalStatus.REVISION_SUGGESTED,
+        }:
+            discord_controls = (
+                f"<p><strong>Discord response: {escape(discord_request.status.value.replace('_', ' '))}</strong></p>"
+                + (
+                    f"<p>{escape(discord_request.revision_notes)}</p>"
+                    if discord_request.revision_notes
+                    else ""
                 )
-            if discord_request and discord_request.status == DiscordApprovalStatus.PENDING:
-                discord_controls = (
-                    "<p><strong>Shared with Discord for optional feedback</strong></p>"
-                    f"<small class='muted'>Request {escape(discord_request.request_id)}</small>"
-                )
-            elif discord_request and discord_request.status == DiscordApprovalStatus.DELIVERY_FAILED:
-                discord_controls = (
-                    "<p class='muted'>The last delivery failed. Check the Discord settings and retry.</p>"
-                    f"<form method='post' action='/items/{encoded_id}/discord'><button type='submit'>Retry Discord delivery</button></form>"
-                )
-            elif discord_request and discord_request.status in {
-                DiscordApprovalStatus.ENDORSED,
-                DiscordApprovalStatus.REVISION_SUGGESTED,
-            }:
-                discord_controls = (
-                    f"<p><strong>Discord response: {escape(discord_request.status.value.replace('_', ' '))}</strong></p>"
-                    + (
-                        f"<p>{escape(discord_request.revision_notes)}</p>"
-                        if discord_request.revision_notes
-                        else ""
-                    )
-                    + "<small class='muted'>Advisory only—the workspace decision is authoritative.</small>"
-                )
-            elif record.status in {"selected", "ready_for_approval", "approved"}:
-                discord_controls = (
-                    "<p class='muted'>Optionally share this version for a quick team signal. Discord cannot approve it.</p>"
-                    f"<form method='post' action='/items/{encoded_id}/discord'><button type='submit'>Share with Discord</button></form>"
-                )
-            else:
-                discord_controls = (
-                    "<p class='muted'>Generate the requested revision before sharing another version with Discord.</p>"
-                )
-            approval_panel = (
-                "<section class='panel'><h2>Quality gate</h2>"
-                f"{_quality_html(quality_report)}</section>"
-                "<section class='panel'><h2>Editorial decision</h2>"
-                f"{_decision_html(decision_for_latest)}{approval_actions}</section>"
-                "<section class='panel discord-panel'><span class='badge discord-badge'>Discord · optional</span>"
-                f"{discord_controls}</section>"
+                + "<small class='muted'>Advisory only—the workspace decision is authoritative.</small>"
+            )
+        elif latest_draft and record.status in {"selected", "ready_for_approval", "approved"}:
+            discord_controls = (
+                "<p class='muted'>Optionally share this version for a quick team signal. Discord cannot approve it.</p>"
+                f"<form method='post' action='/items/{encoded_id}/discord'><button type='submit'>Share with Discord</button></form>"
             )
         else:
-            approval_panel = (
-                "<section class='panel'><h2>Quality gate</h2>"
-                "<p class='muted'>Generate a draft to run deterministic checks.</p></section>"
+            discord_controls = (
+                "<p class='muted'>A reviewed draft is required before it can be shared with Discord.</p>"
             )
+        discord_panel = (
+            "<section class='panel discord-panel'><span class='badge discord-badge'>Discord · optional</span>"
+            f"<h2>Team feedback</h2>{discord_controls}</section>"
+        )
         publishing_panel = ""
         if latest_draft and record.status == "approved":
             if wordpress_delivery and wordpress_delivery.status.value == "draft_created":
@@ -567,6 +576,11 @@ def create_app(
                 "<section class='panel'><span class='badge approved'>WordPress · draft only</span>"
                 f"<h2>Delivery</h2>{publishing_controls}</section>"
             )
+        else:
+            publishing_panel = (
+                "<section class='panel'><span class='badge warning'>WordPress · locked</span>"
+                "<h2>Draft delivery</h2><p class='muted'>Approve the latest article version in the Review tab before creating a WordPress draft.</p></section>"
+            )
         versions_html = "".join(
             "<div class='version'>"
             + (
@@ -588,22 +602,7 @@ def create_app(
             if latest_draft
             else ""
         )
-        return _page(
-            brief.working_title,
-            f"<header class='page-head'><p class='eyebrow'>{escape(brief.article_type.value.replace('_', ' ').upper())}</p>"
-            f"<h1>{escape(brief.working_title)}</h1><div class='meta'>"
-            f"<span class='badge {escape(record.status)}'>{escape(record.status)}</span>"
-            f"<span>{len(packet.evidence.sources)} evidence source(s)</span>"
-            f"<span>·</span><span>{len(draft_versions)} draft version(s)</span></div></header>"
-            "<div class='layout'><section class='stack'>"
-            f"<article class='panel'><h2>Central angle</h2><p>{escape(brief.central_angle)}</p>"
-            f"<h2>Audience value</h2><p>{escape(brief.audience_value)}</p></article>"
-            f"<article class='panel'><h2>Required facts</h2><ul class='facts'>{facts}</ul>"
-            f"<h2>Research gaps</h2><ul class='questions'>{questions}</ul></article>"
-            f"<article class='panel'><h2>Evidence</h2>{sources}</article>"
-            f"{_draft_html(latest_draft, edit_href)}</section>"
-            "<aside class='stack'><section class='panel'><h2>Review state</h2>"
-            f"{review_controls}</section>{approval_panel}{publishing_panel}{versions_panel}"
+        add_feedback_panel = (
             "<section class='panel'><h2>Add feedback</h2>"
             f"<form method='post' action='/items/{encoded_id}/feedback'>"
             f"<select name='signal'>{signal_options}</select>"
@@ -611,9 +610,73 @@ def create_app(
             f"<select name='scope'>{scope_options}</select>"
             "<textarea name='note' required placeholder='What should the system learn or change?'></textarea>"
             "<button type='submit'>Save feedback</button></form></section>"
+        )
+        profile_panel = (
             f"<section class='panel'><h2>Effective writing profile</h2>{_rules_html(preference_profile)}"
             f"<pre>{escape(preference_profile.writer_instructions())}</pre></section>"
-            f"<section class='panel'><h2>Feedback history</h2>{feedback_html}</section></aside></div>",
+        )
+        feedback_history_panel = (
+            f"<section class='panel'><h2>Feedback history</h2>{feedback_html}</section>"
+        )
+        tab_bodies = {
+            "overview": (
+                "<div class='layout'><section class='stack'>"
+                f"<article class='panel'><h2>Central angle</h2><p>{escape(brief.central_angle)}</p>"
+                f"<h2>Audience value</h2><p>{escape(brief.audience_value)}</p></article>"
+                f"<article class='panel'><h2>Required facts</h2><ul class='facts'>{facts}</ul>"
+                f"<h2>Research gaps</h2><ul class='questions'>{questions}</ul></article></section>"
+                f"<aside class='stack'><article class='panel'><h2>Evidence</h2>{sources}</article></aside></div>"
+            ),
+            "editor": (
+                "<div class='layout'><section class='stack'>"
+                f"{_draft_html(latest_draft, edit_href)}</section><aside class='stack'>{versions_panel}</aside></div>"
+            ),
+            "review": (
+                f"<div class='layout'><section class='stack'>{quality_panel}</section>"
+                "<aside class='stack'><section class='panel'><h2>Review state</h2>"
+                f"{review_controls}</section>{decision_panel}</aside></div>"
+            ),
+            "delivery": (
+                f"<div class='layout'><section class='stack'>{publishing_panel}</section>"
+                f"<aside class='stack'>{discord_panel}</aside></div>"
+            ),
+            "learning": (
+                f"<div class='layout'><section class='stack'>{profile_panel}{feedback_history_panel}</section>"
+                f"<aside class='stack'>{add_feedback_panel}</aside></div>"
+            ),
+        }
+        tab_labels = (
+            ("overview", "Overview", ""),
+            ("editor", "Editor", str(len(draft_versions)) if draft_versions else ""),
+            ("review", "Review", ""),
+            ("delivery", "Delivery", "1" if wordpress_delivery else ""),
+            ("learning", "Learning", str(len(feedback)) if feedback else ""),
+        )
+        tabs_html = "".join(
+            f"<a class='story-tab{' active' if key == tab else ''}' href='/items/{encoded_id}?tab={key}'>"
+            f"{label}{f'<span class=count>{count}</span>' if count else ''}</a>"
+            for key, label, count in tab_labels
+        )
+        descriptions = {
+            "overview": "Assignment, required facts, research gaps, and saved evidence.",
+            "editor": "Read or edit the latest article while preserving every version.",
+            "review": "Quality checks, workflow state, and the authoritative editorial decision.",
+            "delivery": "WordPress draft delivery and optional Discord feedback.",
+            "learning": "Story feedback and the writing preferences learned from it.",
+        }
+        return _page(
+            brief.working_title,
+            "<div class='crumb'><a href='/editorial'>Editorial queue</a><span>›</span>"
+            f"<span>{escape(brief.working_title)}</span></div>"
+            f"<header class='page-head'><p class='eyebrow'>{escape(brief.article_type.value.replace('_', ' ').upper())}</p>"
+            f"<h1>{escape(brief.working_title)}</h1><div class='meta'>"
+            f"<span class='badge {escape(record.status)}'>{escape(record.status)}</span>"
+            f"<span>{len(packet.evidence.sources)} evidence source(s)</span>"
+            f"<span>·</span><span>{len(draft_versions)} draft version(s)</span></div></header>"
+            f"<nav class='story-tabs' aria-label='Story workspace'>{tabs_html}</nav>"
+            f"<div class='tab-intro'><div><p class='eyebrow'>{tab.upper()}</p>"
+            f"<p class='muted'>{escape(descriptions[tab])}</p></div></div>"
+            f"{tab_bodies[tab]}",
             active="editorial",
         )
 
@@ -769,7 +832,9 @@ def create_app(
             raise HTTPException(status_code=404, detail="Editorial item not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        return RedirectResponse(f"/items/{quote(content_item_id, safe='')}", status_code=303)
+        return RedirectResponse(
+            f"/items/{quote(content_item_id, safe='')}?tab=editor", status_code=303
+        )
 
     @app.post("/items/{content_item_id}/status")
     def update_status(content_item_id: str, status: str = Form()) -> RedirectResponse:
@@ -779,7 +844,9 @@ def create_app(
             raise HTTPException(status_code=404, detail="Editorial item not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return RedirectResponse(f"/items/{quote(content_item_id, safe='')}", status_code=303)
+        return RedirectResponse(
+            f"/items/{quote(content_item_id, safe='')}?tab=review", status_code=303
+        )
 
     @app.post("/items/{content_item_id}/draft")
     async def generate_draft(content_item_id: str) -> RedirectResponse:
@@ -807,7 +874,9 @@ def create_app(
                 detail="Ollama Cloud generation failed; no draft was saved.",
             ) from exc
         store.save_draft(draft)
-        return RedirectResponse(f"/items/{quote(content_item_id, safe='')}", status_code=303)
+        return RedirectResponse(
+            f"/items/{quote(content_item_id, safe='')}?tab=editor", status_code=303
+        )
 
     @app.post("/items/{content_item_id}/decision")
     def decide_draft(
@@ -832,7 +901,9 @@ def create_app(
             store.record_decision(decision)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return RedirectResponse(f"/items/{quote(content_item_id, safe='')}", status_code=303)
+        return RedirectResponse(
+            f"/items/{quote(content_item_id, safe='')}?tab=review", status_code=303
+        )
 
     @app.post("/items/{content_item_id}/discord")
     async def send_to_discord(content_item_id: str) -> RedirectResponse:
@@ -869,7 +940,9 @@ def create_app(
                 status_code=502,
                 detail="Discord delivery failed; the draft remains unapproved.",
             ) from exc
-        return RedirectResponse(f"/items/{quote(content_item_id, safe='')}", status_code=303)
+        return RedirectResponse(
+            f"/items/{quote(content_item_id, safe='')}?tab=delivery", status_code=303
+        )
 
     @app.get("/items/{content_item_id}/wordpress/preview", response_class=HTMLResponse)
     def preview_wordpress(content_item_id: str) -> HTMLResponse:
@@ -888,7 +961,7 @@ def create_app(
             "<aside class='stack'><section class='panel'><span class='badge approved'>Draft only</span>"
             "<h2>Ready to deliver?</h2><p class='muted'>WordPress will create an unpublished draft. Publishing remains manual.</p>"
             f"<form method='post' action='/items/{encoded_id}/wordpress'><button type='submit'>Create WordPress draft</button></form>"
-            f"<a class='text-link' href='/items/{encoded_id}'>Return to article review</a></section></aside></div>",
+            f"<a class='text-link' href='/items/{encoded_id}?tab=delivery'>Return to delivery</a></section></aside></div>",
             active="drafts",
         )
 
@@ -903,7 +976,7 @@ def create_app(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         if delivery.status.value == "draft_created":
             return RedirectResponse(
-                f"/items/{quote(content_item_id, safe='')}", status_code=303
+                f"/items/{quote(content_item_id, safe='')}?tab=delivery", status_code=303
             )
         try:
             result = await publisher_factory().create_draft(draft)
@@ -925,7 +998,9 @@ def create_app(
             result.post_url,
             result.editor_url,
         )
-        return RedirectResponse(f"/items/{quote(content_item_id, safe='')}", status_code=303)
+        return RedirectResponse(
+            f"/items/{quote(content_item_id, safe='')}?tab=delivery", status_code=303
+        )
 
     @app.post("/discord/interactions")
     async def discord_interactions(incoming: Request) -> JSONResponse:
@@ -1023,6 +1098,8 @@ def create_app(
             raise HTTPException(status_code=404, detail="Editorial item not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return RedirectResponse(f"/items/{quote(content_item_id, safe='')}", status_code=303)
+        return RedirectResponse(
+            f"/items/{quote(content_item_id, safe='')}?tab=learning", status_code=303
+        )
 
     return app

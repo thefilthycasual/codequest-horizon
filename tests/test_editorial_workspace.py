@@ -205,7 +205,7 @@ def test_workspace_generates_and_renders_unpublished_draft(tmp_path) -> None:
         f"/items/{packet.brief.content_item_id}/draft",
         follow_redirects=False,
     )
-    detail = client.get(f"/items/{packet.brief.content_item_id}")
+    detail = client.get(f"/items/{packet.brief.content_item_id}?tab=editor")
 
     assert response.status_code == 303
     assert store.get_latest_draft(packet.brief.content_item_id) is not None
@@ -214,6 +214,37 @@ def test_workspace_generates_and_renders_unpublished_draft(tmp_path) -> None:
     assert "test-writer" in detail.text
     assert "&lt;script&gt;grounded" in detail.text
     assert "<script>grounded" not in detail.text
+
+
+def test_story_workspace_tabs_keep_each_stage_focused(tmp_path) -> None:
+    db_path = tmp_path / "editorial.sqlite3"
+    packet = _packet()
+    store = EditorialStore(db_path)
+    store.save_packet(packet)
+    store.set_status(packet.brief.content_item_id, "selected")
+    client = TestClient(create_app(db_path, draft_generator_factory=_StubDraftGenerator))
+    client.post(f"/items/{packet.brief.content_item_id}/draft")
+    path = f"/items/{packet.brief.content_item_id}"
+
+    overview = client.get(path)
+    editor = client.get(f"{path}?tab=editor")
+    review = client.get(f"{path}?tab=review")
+    delivery = client.get(f"{path}?tab=delivery")
+    learning = client.get(f"{path}?tab=learning")
+
+    assert "Editorial queue" in overview.text
+    assert "Story workspace" in overview.text
+    assert "Central angle" in overview.text
+    assert "UNPUBLISHED REVIEW DRAFT" not in overview.text
+    assert "UNPUBLISHED REVIEW DRAFT" in editor.text
+    assert "Version history" in editor.text
+    assert "Quality gate" not in editor.text
+    assert "Quality gate" in review.text
+    assert "WordPress · locked" in delivery.text
+    assert "Discord · optional" in delivery.text
+    assert "Effective writing profile" in learning.text
+    assert "Add feedback" in learning.text
+    assert client.get(f"{path}?tab=missing").status_code == 404
 
 
 def test_workspace_blocks_draft_generation_for_candidate(tmp_path) -> None:
@@ -241,13 +272,14 @@ def test_workspace_queues_reviewed_draft_for_discord_approval(tmp_path) -> None:
         data={"outcome": "ready_for_approval", "notes": "Ready for Discord."},
         follow_redirects=False,
     )
-    detail = client.get(f"/items/{packet.brief.content_item_id}")
+    review = client.get(f"/items/{packet.brief.content_item_id}?tab=review")
+    delivery = client.get(f"/items/{packet.brief.content_item_id}?tab=delivery")
 
     assert response.status_code == 303
     assert store.get_item(packet.brief.content_item_id).status == "ready_for_approval"
     assert store.get_latest_decision(packet.brief.content_item_id).notes.startswith("Ready")
-    assert "workspace editor can now make the final decision" in detail.text
-    assert "Share with Discord" in detail.text
+    assert "workspace editor can now make the final decision" in review.text
+    assert "Share with Discord" in delivery.text
 
 
 def test_workspace_rejects_status_only_approval(tmp_path) -> None:

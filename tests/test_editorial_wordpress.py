@@ -180,7 +180,7 @@ def test_approved_draft_preview_and_delivery_are_idempotent(tmp_path) -> None:
     preview = client.get(f"/items/{item_id}/wordpress/preview")
     first = client.post(f"/items/{item_id}/wordpress", follow_redirects=False)
     second = client.post(f"/items/{item_id}/wordpress", follow_redirects=False)
-    detail = client.get(f"/items/{item_id}")
+    detail = client.get(f"/items/{item_id}?tab=delivery")
     delivery = store.get_wordpress_delivery(draft.draft_id)
 
     assert preview.status_code == 200

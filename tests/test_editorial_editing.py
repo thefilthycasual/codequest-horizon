@@ -44,7 +44,8 @@ def test_editor_saves_a_new_version_without_overwriting_the_original(tmp_path) -
     )
     versions = store.list_drafts(packet.brief.content_item_id)
     latest = versions[0]
-    detail = client.get(f"/items/{packet.brief.content_item_id}")
+    review = client.get(f"/items/{packet.brief.content_item_id}?tab=review")
+    editor_detail = client.get(f"/items/{packet.brief.content_item_id}?tab=editor")
 
     assert editor.status_code == 200
     assert "Save as new version" in editor.text
@@ -58,8 +59,8 @@ def test_editor_saves_a_new_version_without_overwriting_the_original(tmp_path) -
     assert latest.title == "A clearer human-edited headline"
     assert versions[1].title == original.title
     assert store.get_item(packet.brief.content_item_id).status == "selected"
-    assert "requires a fresh editorial decision" in detail.text
-    assert "2 draft version(s)" in detail.text
+    assert "requires a fresh editorial decision" in review.text
+    assert "2 draft version(s)" in editor_detail.text
 
 
 def test_editing_an_approved_draft_invalidates_approval_for_the_new_version(tmp_path) -> None:
@@ -125,7 +126,7 @@ def test_editor_is_locked_after_a_wordpress_draft_is_created(tmp_path) -> None:
     )
 
     editor = client.get(f"/items/{packet.brief.content_item_id}/edit")
-    detail = client.get(f"/items/{packet.brief.content_item_id}")
+    detail = client.get(f"/items/{packet.brief.content_item_id}?tab=delivery")
 
     assert editor.status_code == 409
     assert "already has a WordPress draft" in editor.text
