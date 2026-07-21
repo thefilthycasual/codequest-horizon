@@ -12,6 +12,8 @@ from .models import (
     ArticleDraft,
     DecisionOutcome,
     DraftDecision,
+    DiscordApprovalRequest,
+    DiscordApprovalStatus,
     EditorialPacket,
     PreferenceScope,
     PreferenceSignal,
@@ -79,6 +81,25 @@ class EditorialStore:
                     packet_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS discord_approval_requests (
+                    request_id TEXT PRIMARY KEY,
+                    content_item_id TEXT NOT NULL,
+                    draft_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    request_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (content_item_id)
+                        REFERENCES editorial_items(content_item_id)
+                        ON DELETE CASCADE,
+                    FOREIGN KEY (draft_id)
+                        REFERENCES editorial_drafts(draft_id)
+                        ON DELETE CASCADE
                 )
                 """
             )
@@ -167,6 +188,28 @@ class EditorialStore:
                 "SELECT * FROM editorial_items ORDER BY updated_at DESC"
             ).fetchall()
         return [self._record(row) for row in rows]
+
+    def dashboard_stats(self) -> dict[str, int]:
+        """Return compact counts for the local editorial overview."""
+
+        with self._connect() as connection:
+            status_rows = connection.execute(
+                "SELECT status, COUNT(*) AS total FROM editorial_items GROUP BY status"
+            ).fetchall()
+            draft_count = connection.execute(
+                "SELECT COUNT(*) AS total FROM editorial_drafts"
+            ).fetchone()["total"]
+            reusable_feedback = connection.execute(
+                "SELECT COUNT(*) AS total FROM editorial_feedback "
+                "WHERE scope IN ('global', 'article_type')"
+            ).fetchone()["total"]
+        stats = {status: 0 for status in EDITORIAL_STATUSES}
+        stats.update({row["status"]: row["total"] for row in status_rows})
+        stats["items"] = sum(row["total"] for row in status_rows)
+        stats["drafts"] = draft_count
+        stats["reusable_feedback"] = reusable_feedback
+        stats["attention"] = stats["selected"] + stats["needs_revision"]
+        return stats
 
     def get_item(self, content_item_id: str) -> EditorialItemRecord | None:
         with self._connect() as connection:
@@ -272,6 +315,8 @@ class EditorialStore:
             and not decision.quality_report.can_approve
         ):
             raise ValueError("Draft has blocking quality failures and cannot enter approval.")
+        if decision.outcome == DecisionOutcome.APPROVED and not decision.quality_report.can_approve:
+            raise ValueError("Draft has blocking quality failures and cannot be approved.")
         if decision.outcome == DecisionOutcome.NEEDS_REVISION and not decision.notes.strip():
             raise ValueError("Revision requests require editor notes.")
 
@@ -318,6 +363,129 @@ class EditorialStore:
         if decision and decision.outcome == DecisionOutcome.NEEDS_REVISION:
             return [decision.notes]
         return []
+
+    def create_discord_request(
+        self, request: DiscordApprovalRequest
+    ) -> DiscordApprovalRequest:
+        latest_draft = self.get_latest_draft(request.content_item_id)
+        if latest_draft is None or latest_draft.draft_id != request.draft_id:
+            raise ValueError("Only the latest draft can be sent to Discord.")
+        record = self.get_item(request.content_item_id)
+        if record is None:
+            raise KeyError(request.content_item_id)
+        if record.status not in {"selected", "ready_for_approval", "approved"}:
+            raise ValueError("Only a reviewed draft can be shared with Discord.")
+        pending = self.get_pending_discord_request(request.content_item_id)
+        if pending is not None:
+            raise ValueError("This draft already has a pending Discord approval request.")
+        now = _now()
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO discord_approval_requests "
+                "(request_id, content_item_id, draft_id, status, request_json, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    request.request_id,
+                    request.content_item_id,
+                    request.draft_id,
+                    request.status.value,
+                    request.model_dump_json(),
+                    request.requested_at.isoformat(),
+                    now,
+                ),
+            )
+        return request
+
+    def update_discord_delivery(
+        self, request_id: str, channel_id: str, message_id: str
+    ) -> DiscordApprovalRequest:
+        request = self.get_discord_request(request_id)
+        if request is None:
+            raise KeyError(request_id)
+        request.channel_id = channel_id
+        request.message_id = message_id
+        self._save_discord_request(request)
+        return request
+
+    def mark_discord_delivery_failed(self, request_id: str) -> None:
+        request = self.get_discord_request(request_id)
+        if request is None:
+            raise KeyError(request_id)
+        request.status = DiscordApprovalStatus.DELIVERY_FAILED
+        request.resolved_at = datetime.now(timezone.utc)
+        self._save_discord_request(request)
+
+    def get_discord_request(self, request_id: str) -> DiscordApprovalRequest | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT request_json FROM discord_approval_requests WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+        return DiscordApprovalRequest.model_validate_json(row["request_json"]) if row else None
+
+    def get_latest_discord_request(
+        self, content_item_id: str
+    ) -> DiscordApprovalRequest | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT request_json FROM discord_approval_requests WHERE content_item_id = ? "
+                "ORDER BY created_at DESC, request_id DESC LIMIT 1",
+                (content_item_id,),
+            ).fetchone()
+        return DiscordApprovalRequest.model_validate_json(row["request_json"]) if row else None
+
+    def get_pending_discord_request(
+        self, content_item_id: str
+    ) -> DiscordApprovalRequest | None:
+        request = self.get_latest_discord_request(content_item_id)
+        return request if request and request.status == DiscordApprovalStatus.PENDING else None
+
+    def resolve_discord_request(
+        self,
+        request_id: str,
+        status: DiscordApprovalStatus,
+        actor_id: str,
+        actor_name: str,
+        revision_notes: str = "",
+    ) -> DiscordApprovalRequest:
+        request = self.get_discord_request(request_id)
+        if request is None:
+            raise KeyError(request_id)
+        if request.status != DiscordApprovalStatus.PENDING:
+            raise ValueError("This Discord approval request has already been resolved.")
+        if status not in {
+            DiscordApprovalStatus.ENDORSED,
+            DiscordApprovalStatus.REVISION_SUGGESTED,
+        }:
+            raise ValueError("Unsupported Discord response.")
+        cleaned_notes = revision_notes.strip()
+        if status == DiscordApprovalStatus.REVISION_SUGGESTED and not cleaned_notes:
+            raise ValueError("Suggested revisions require notes.")
+        latest_draft = self.get_latest_draft(request.content_item_id)
+        if latest_draft is None or latest_draft.draft_id != request.draft_id:
+            raise ValueError("This approval request no longer refers to the latest draft.")
+        request.status = status
+        request.resolved_by_id = actor_id
+        request.resolved_by_name = actor_name
+        request.revision_notes = cleaned_notes
+        request.resolved_at = datetime.now(timezone.utc)
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE discord_approval_requests SET status = ?, request_json = ?, updated_at = ? "
+                "WHERE request_id = ?",
+                (status.value, request.model_dump_json(), _now(), request_id),
+            )
+        return request
+
+    def _save_discord_request(self, request: DiscordApprovalRequest) -> None:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE discord_approval_requests SET status = ?, request_json = ?, updated_at = ? "
+                "WHERE request_id = ?",
+                (request.status.value, request.model_dump_json(), _now(), request.request_id),
+            )
+        if cursor.rowcount != 1:
+            raise KeyError(request.request_id)
 
     def list_applicable_feedback(
         self,

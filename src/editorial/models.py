@@ -170,6 +170,7 @@ class DraftQualityReport(BaseModel):
 
 
 class DecisionOutcome(str, Enum):
+    APPROVED = "approved"
     READY_FOR_APPROVAL = "ready_for_approval"
     NEEDS_REVISION = "needs_revision"
 
@@ -182,3 +183,26 @@ class DraftDecision(BaseModel):
     notes: str = ""
     quality_report: DraftQualityReport
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class DiscordApprovalStatus(str, Enum):
+    PENDING = "pending"
+    ENDORSED = "endorsed"
+    REVISION_SUGGESTED = "revision_suggested"
+    DELIVERY_FAILED = "delivery_failed"
+
+
+class DiscordApprovalRequest(BaseModel):
+    """A durable request tying one reviewed draft to one Discord message."""
+
+    request_id: str = Field(default_factory=lambda: f"discord_{uuid4().hex}")
+    content_item_id: str
+    draft_id: str
+    status: DiscordApprovalStatus = DiscordApprovalStatus.PENDING
+    channel_id: str | None = None
+    message_id: str | None = None
+    resolved_by_id: str | None = None
+    resolved_by_name: str | None = None
+    revision_notes: str = ""
+    requested_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    resolved_at: datetime | None = None

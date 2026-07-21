@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
+import json
 
 import pytest
 from fastapi.testclient import TestClient
+from nacl.signing import SigningKey
 
 from src.editorial.briefing import build_editorial_packet
 from src.editorial.models import ArticleDraft, DraftParagraph, DraftSection
@@ -58,6 +60,33 @@ class _StubDraftGenerator:
         )
 
 
+class _StubDiscordBridge:
+    sent = []
+    closed = []
+
+    async def send_request(self, request, draft, quality):
+        self.sent.append((request.request_id, draft.draft_id, quality.can_approve))
+        return "channel-1", "message-1"
+
+    async def close_request_message(self, request, summary):
+        self.closed.append((request.request_id, summary))
+
+
+def _signed_discord_post(client, signing_key, payload):
+    body = json.dumps(payload, separators=(",", ":")).encode()
+    timestamp = "1784600000"
+    signature = signing_key.sign(timestamp.encode() + body).signature.hex()
+    return client.post(
+        "/discord/interactions",
+        content=body,
+        headers={
+            "content-type": "application/json",
+            "x-signature-ed25519": signature,
+            "x-signature-timestamp": timestamp,
+        },
+    )
+
+
 def test_editorial_store_round_trip_and_feedback(tmp_path) -> None:
     store = EditorialStore(tmp_path / "editorial.sqlite3")
     packet = _packet()
@@ -109,9 +138,13 @@ def test_workspace_renders_inbox_detail_and_escaped_content(tmp_path) -> None:
     EditorialStore(db_path).save_packet(packet)
     client = TestClient(create_app(db_path))
 
-    inbox = client.get("/")
+    overview = client.get("/")
+    inbox = client.get("/editorial")
     detail = client.get("/items/rss%3Acodequest%3Aworkspace-1")
 
+    assert overview.status_code == 200
+    assert "WORKSPACE OVERVIEW" in overview.text
+    assert "Editorial queue" in overview.text
     assert inbox.status_code == 200
     assert "Find the signal" in inbox.text
     assert "&lt;script&gt;" in inbox.text
@@ -156,7 +189,7 @@ def test_workspace_records_status_and_feedback(tmp_path) -> None:
 def test_workspace_returns_empty_state_and_missing_item(tmp_path) -> None:
     client = TestClient(create_app(tmp_path / "editorial.sqlite3"))
 
-    assert "No candidates" in client.get("/").text
+    assert "No candidates" in client.get("/editorial").text
     assert client.get("/items/missing").status_code == 404
 
 
@@ -213,7 +246,8 @@ def test_workspace_queues_reviewed_draft_for_discord_approval(tmp_path) -> None:
     assert response.status_code == 303
     assert store.get_item(packet.brief.content_item_id).status == "ready_for_approval"
     assert store.get_latest_decision(packet.brief.content_item_id).notes.startswith("Ready")
-    assert "Final approval remains in Discord" in detail.text
+    assert "workspace editor can now make the final decision" in detail.text
+    assert "Share with Discord" in detail.text
 
 
 def test_workspace_rejects_status_only_approval(tmp_path) -> None:
@@ -228,3 +262,145 @@ def test_workspace_rejects_status_only_approval(tmp_path) -> None:
     )
 
     assert response.status_code == 400
+
+
+def test_discord_signed_endorsement_is_advisory_only(tmp_path, monkeypatch) -> None:
+    signing_key = SigningKey.generate()
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "test-token")
+    monkeypatch.setenv("DISCORD_APPROVAL_CHANNEL_ID", "channel-1")
+    monkeypatch.setenv(
+        "DISCORD_APPLICATION_PUBLIC_KEY", signing_key.verify_key.encode().hex()
+    )
+    db_path = tmp_path / "editorial.sqlite3"
+    packet = _packet()
+    store = EditorialStore(db_path)
+    store.save_packet(packet)
+    store.set_status(packet.brief.content_item_id, "selected")
+    client = TestClient(
+        create_app(
+            db_path,
+            draft_generator_factory=_StubDraftGenerator,
+            discord_bridge_factory=_StubDiscordBridge,
+        )
+    )
+    client.post(f"/items/{packet.brief.content_item_id}/draft")
+    client.post(
+        f"/items/{packet.brief.content_item_id}/decision",
+        data={"outcome": "ready_for_approval", "notes": "Reviewed."},
+    )
+
+    delivery = client.post(
+        f"/items/{packet.brief.content_item_id}/discord", follow_redirects=False
+    )
+    request = store.get_latest_discord_request(packet.brief.content_item_id)
+    response = _signed_discord_post(
+        client,
+        signing_key,
+        {
+            "type": 3,
+            "data": {"custom_id": f"cq:approve:{request.request_id}"},
+            "member": {"user": {"id": "editor-1", "username": "Herman"}},
+            "message": {"embeds": [{"title": "Reviewed draft"}]},
+        },
+    )
+
+    assert delivery.status_code == 303
+    assert request.message_id == "message-1"
+    assert response.status_code == 200
+    assert response.json()["type"] == 7
+    assert store.get_item(packet.brief.content_item_id).status == "ready_for_approval"
+    assert store.get_latest_discord_request(packet.brief.content_item_id).status.value == "endorsed"
+    assert store.get_latest_discord_request(packet.brief.content_item_id).resolved_by_name == "Herman"
+
+
+def test_discord_revision_suggestions_do_not_change_editorial_state(tmp_path, monkeypatch) -> None:
+    signing_key = SigningKey.generate()
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "test-token")
+    monkeypatch.setenv("DISCORD_APPROVAL_CHANNEL_ID", "channel-1")
+    monkeypatch.setenv(
+        "DISCORD_APPLICATION_PUBLIC_KEY", signing_key.verify_key.encode().hex()
+    )
+    db_path = tmp_path / "editorial.sqlite3"
+    packet = _packet()
+    store = EditorialStore(db_path)
+    store.save_packet(packet)
+    store.set_status(packet.brief.content_item_id, "selected")
+    client = TestClient(
+        create_app(
+            db_path,
+            draft_generator_factory=_StubDraftGenerator,
+            discord_bridge_factory=_StubDiscordBridge,
+        )
+    )
+    client.post(f"/items/{packet.brief.content_item_id}/draft")
+    client.post(
+        f"/items/{packet.brief.content_item_id}/decision",
+        data={"outcome": "ready_for_approval", "notes": "Reviewed."},
+    )
+    client.post(f"/items/{packet.brief.content_item_id}/discord")
+    request = store.get_latest_discord_request(packet.brief.content_item_id)
+
+    modal = _signed_discord_post(
+        client,
+        signing_key,
+        {
+            "type": 5,
+            "data": {
+                "custom_id": f"cq:revision_modal:{request.request_id}",
+                "components": [
+                    {
+                        "type": 1,
+                        "components": [
+                            {
+                                "type": 4,
+                                "custom_id": "revision_notes",
+                                "value": "Make the opening more specific.",
+                            }
+                        ],
+                    }
+                ],
+            },
+            "member": {"user": {"id": "editor-2", "username": "Editor"}},
+        },
+    )
+
+    assert modal.status_code == 200
+    assert store.get_item(packet.brief.content_item_id).status == "ready_for_approval"
+    assert store.latest_revision_notes(packet.brief.content_item_id) == []
+    request = store.get_latest_discord_request(packet.brief.content_item_id)
+    assert request.status.value == "revision_suggested"
+    assert request.revision_notes == "Make the opening more specific."
+
+
+def test_workspace_editor_can_make_final_approval(tmp_path) -> None:
+    db_path = tmp_path / "editorial.sqlite3"
+    packet = _packet()
+    store = EditorialStore(db_path)
+    store.save_packet(packet)
+    store.set_status(packet.brief.content_item_id, "selected")
+    client = TestClient(create_app(db_path, draft_generator_factory=_StubDraftGenerator))
+    client.post(f"/items/{packet.brief.content_item_id}/draft")
+
+    response = client.post(
+        f"/items/{packet.brief.content_item_id}/decision",
+        data={"outcome": "approved", "notes": "Final approval in workspace."},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert store.get_item(packet.brief.content_item_id).status == "approved"
+    assert store.get_latest_decision(packet.brief.content_item_id).outcome.value == "approved"
+
+
+def test_discord_rejects_unsigned_interactions(tmp_path, monkeypatch) -> None:
+    signing_key = SigningKey.generate()
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "test-token")
+    monkeypatch.setenv("DISCORD_APPROVAL_CHANNEL_ID", "channel-1")
+    monkeypatch.setenv(
+        "DISCORD_APPLICATION_PUBLIC_KEY", signing_key.verify_key.encode().hex()
+    )
+    client = TestClient(create_app(tmp_path / "editorial.sqlite3"))
+
+    response = client.post("/discord/interactions", json={"type": 1})
+
+    assert response.status_code == 401

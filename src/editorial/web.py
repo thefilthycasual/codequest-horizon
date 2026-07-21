@@ -7,15 +7,29 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import quote
 
-from fastapi import FastAPI, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+
+from .discord import (
+    DiscordApprovalBridge,
+    DiscordConfig,
+    modal_value,
+    revision_modal,
+    verify_discord_signature,
+)
 
 from .drafting import (
     ArticleDraftGenerator,
     DraftGenerationError,
     create_ollama_cloud_draft_generator,
 )
-from .models import ArticleType, DecisionOutcome, DraftDecision
+from .models import (
+    ArticleType,
+    DecisionOutcome,
+    DiscordApprovalRequest,
+    DiscordApprovalStatus,
+    DraftDecision,
+)
 from .preferences import build_preference_profile
 from .quality import evaluate_draft
 from .store import (
@@ -74,17 +88,63 @@ border:1px solid #ffd2b6;border-radius:14px;padding:14px}.empty{text-align:cente
 padding-right:16px}.panel,.card{padding:19px}.draft{padding:22px}h1{font-size:31px}}
 """
 
+_ADMIN_STYLE = """
+:root{--sidebar:272px}.site-header{display:none}.sidebar{position:fixed;inset:0 auto 0 0;width:var(--sidebar);
+background:#fff;border-right:1px solid var(--line);padding:22px 16px;display:flex;flex-direction:column;z-index:20}
+.workspace{display:flex;align-items:center;gap:12px;padding:10px 9px 22px;border-bottom:1px solid var(--line);margin-bottom:18px}
+.workspace-mark{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:var(--ink);color:#fff;
+font-weight:850;letter-spacing:-.04em}.workspace strong,.workspace small{display:block}.workspace strong{font-size:16px}.workspace small{color:var(--muted);font-size:12px}
+.nav-label{margin:12px 11px 7px;color:#9a9fa8;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+.side-nav{display:grid;gap:4px}.nav-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;
+text-decoration:none;color:#464b55;font-weight:650}.nav-item:hover{background:#f6f6f7}.nav-item.active{background:#f1f2f3;color:#111}
+.nav-icon{width:19px;height:19px;display:grid;place-items:center;color:#747a84}.nav-icon svg{width:18px;height:18px;
+fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.nav-item.active .nav-icon{color:var(--accent)}
+.sidebar-foot{margin-top:auto;border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;align-items:center;gap:10px}
+.status-dot{width:9px;height:9px;border-radius:50%;background:#2db879;box-shadow:0 0 0 4px #e8f8f1}.sidebar-foot strong,.sidebar-foot small{display:block}
+.sidebar-foot small{font-size:11px;color:var(--muted)}.content{margin-left:var(--sidebar);min-height:100vh}.shell{max-width:1320px;padding:42px 38px 80px}
+.stat-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:14px;margin-bottom:28px}.stat-card{background:#fff;border:1px solid var(--line);
+border-radius:14px;padding:20px}.stat-card small{color:var(--muted)}.stat-value{display:block;font-size:34px;font-weight:820;line-height:1.1;letter-spacing:-.04em;margin:7px 0}
+.section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:26px 0 14px}.text-link{color:#c75b17;font-weight:700;text-decoration:none}
+.discord-panel{border-color:#d9dcff;background:#fafaff}.discord-panel .discord-badge{background:#5865f2;color:#fff;border-color:#5865f2}
+.crumb{display:flex;gap:8px;color:var(--muted);font-size:12px;margin-bottom:18px}.crumb a{text-decoration:none}.crumb a:hover{color:var(--accent)}
+@media(max-width:980px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:820px){.sidebar{position:static;width:auto;padding:12px}.workspace{padding-bottom:12px;margin-bottom:8px}.workspace small,.nav-label,.sidebar-foot{display:none}
+.side-nav{display:flex;overflow:auto}.nav-item{white-space:nowrap}.content{margin-left:0}.shell{padding:30px 18px 70px}}
+@media(max-width:480px){.stat-grid{grid-template-columns:1fr 1fr}.nav-item{font-size:13px;padding:9px}.nav-icon{display:none}}
+"""
 
-def _page(title: str, body: str) -> HTMLResponse:
+_ICONS = {
+    "overview": "<svg viewBox='0 0 24 24'><rect x='3' y='3' width='7' height='7' rx='1'/><rect x='14' y='3' width='7' height='7' rx='1'/><rect x='3' y='14' width='7' height='7' rx='1'/><rect x='14' y='14' width='7' height='7' rx='1'/></svg>",
+    "editorial": "<svg viewBox='0 0 24 24'><path d='M4 5h16v14H4z'/><path d='M8 9h8M8 13h8M8 17h5'/></svg>",
+    "drafts": "<svg viewBox='0 0 24 24'><path d='M6 3h9l4 4v14H6z'/><path d='M14 3v5h5M9 12h6M9 16h6'/></svg>",
+    "memory": "<svg viewBox='0 0 24 24'><path d='M12 3a4 4 0 0 0-4 4v1a4 4 0 0 0 0 8v1a4 4 0 0 0 4 4'/><path d='M12 3a4 4 0 0 1 4 4v1a4 4 0 0 1 0 8v1a4 4 0 0 1-4 4M12 3v18'/></svg>",
+}
+
+
+def _nav_item(key: str, label: str, href: str, active: str) -> str:
+    selected = " active" if key == active else ""
+    return f"<a class='nav-item{selected}' href='{href}'><span class='nav-icon'>{_ICONS[key]}</span>{label}</a>"
+
+
+def _page(title: str, body: str, active: str = "overview") -> HTMLResponse:
+    navigation = "".join(
+        (
+            _nav_item("overview", "Overview", "/", active),
+            _nav_item("editorial", "Editorial queue", "/editorial", active),
+            _nav_item("drafts", "Draft library", "/drafts", active),
+            _nav_item("memory", "Editorial memory", "/preferences", active),
+        )
+    )
     return HTMLResponse(
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        f"<title>{escape(title)} · CodeQuest</title><style>{_STYLE}</style></head>"
-        "<body><header class='site-header'><div class='top'>"
-        "<a class='brand' href='/'>CodeQuest</a>"
-        "<nav class='nav'><a href='/'>Editorial</a><a href='/preferences'>Memory</a>"
-        "<span class='horizon-chip'>Horizon powered</span></nav></div></header>"
-        f"<main class='shell'>{body}</main></body></html>"
+        f"<title>{escape(title)} · CodeQuest</title><style>{_STYLE}{_ADMIN_STYLE}</style></head>"
+        "<body><aside class='sidebar'><div class='workspace'><div class='workspace-mark'>CQ</div>"
+        "<div><strong>CodeQuest</strong><small>Editorial studio</small></div></div>"
+        f"<p class='nav-label'>Workspace</p><nav class='side-nav'>{navigation}</nav>"
+        "<div class='sidebar-foot'><span class='status-dot'></span><div><strong>Local workspace</strong>"
+        "<small>Horizon discovery connected</small></div></div></aside>"
+        f"<main class='content'><div class='shell'>{body}</div></main></body></html>"
     )
 
 
@@ -156,20 +216,51 @@ def _decision_html(decision) -> str:
 def create_app(
     db_path: str | Path = "data/codequest-editorial.sqlite3",
     draft_generator_factory: Callable[[], ArticleDraftGenerator] | None = None,
+    discord_bridge_factory: Callable[[], DiscordApprovalBridge] | None = None,
 ) -> FastAPI:
     app = FastAPI(title="CodeQuest Editorial Workspace")
     store = EditorialStore(db_path)
     writer_factory = draft_generator_factory or create_ollama_cloud_draft_generator
+    bridge_factory = discord_bridge_factory or (
+        lambda: DiscordApprovalBridge(DiscordConfig.from_env())
+    )
 
     @app.get("/", response_class=HTMLResponse)
+    def overview() -> HTMLResponse:
+        stats = store.dashboard_stats()
+        recent = store.list_items()[:4]
+        cards = "".join(
+            f"<a class='card' href='/items/{quote(record.packet.brief.content_item_id, safe='')}'>"
+            f"<span class='badge {escape(record.status)}'>{escape(record.status.replace('_', ' '))}</span>"
+            f"<h2>{escape(record.packet.brief.working_title)}</h2>"
+            f"<p class='muted'>{escape(record.packet.brief.central_angle)}</p></a>"
+            for record in recent
+        ) or "<article class='panel empty'><p class='muted'>No stories have entered the workspace yet.</p></article>"
+        return _page(
+            "Overview",
+            "<header class='page-head'><p class='eyebrow'>WORKSPACE OVERVIEW</p>"
+            "<h1>Your editorial operation, <span class='accent'>at a glance.</span></h1>"
+            "<p class='muted'>Draft, learn, and approve from one focused workspace.</p></header>"
+            "<section class='stat-grid'>"
+            f"<article class='stat-card'><small>Stories</small><strong class='stat-value'>{stats['items']}</strong><span class='muted'>in the pipeline</span></article>"
+            f"<article class='stat-card'><small>Needs attention</small><strong class='stat-value'>{stats['attention']}</strong><span class='muted'>selected or revising</span></article>"
+            f"<article class='stat-card'><small>Draft versions</small><strong class='stat-value'>{stats['drafts']}</strong><span class='muted'>saved locally</span></article>"
+            f"<article class='stat-card'><small>Learned preferences</small><strong class='stat-value'>{stats['reusable_feedback']}</strong><span class='muted'>reusable rules</span></article>"
+            "</section><div class='section-head'><h2>Recent stories</h2><a class='text-link' href='/editorial'>View editorial queue →</a></div>"
+            f"<section class='grid'>{cards}</section>",
+            active="overview",
+        )
+
+    @app.get("/editorial", response_class=HTMLResponse)
     def inbox() -> HTMLResponse:
         records = store.list_items()
         if not records:
             return _page(
-                "Inbox",
+                "Editorial queue",
                 "<section class='empty panel'><p class='eyebrow'>EDITORIAL INBOX</p>"
                 "<h1>No candidates <span class='accent'>yet</span></h1><p class='muted'>Import a Horizon content item "
                 "with the codequest-workspace command.</p></section>",
+                active="editorial",
             )
         cards = []
         for record in records:
@@ -183,11 +274,35 @@ def create_app(
                 f"<span>·</span><span>{len(record.packet.evidence.sources)} source(s)</span></div></a>"
             )
         return _page(
-            "Inbox",
+            "Editorial queue",
             "<header class='page-head'><p class='eyebrow'>EDITORIAL INBOX</p>"
             "<h1>Find the signal. Shape the <span class='accent'>story.</span></h1>"
             "<p class='muted'>Review the angle, evidence, and editorial memory before drafting.</p></header>"
             f"<section class='grid'>{''.join(cards)}</section>",
+            active="editorial",
+        )
+
+    @app.get("/drafts", response_class=HTMLResponse)
+    def drafts() -> HTMLResponse:
+        entries = []
+        for record in store.list_items():
+            for draft in store.list_drafts(record.packet.brief.content_item_id):
+                entries.append((draft, record.status))
+        entries.sort(key=lambda item: item[0].created_at, reverse=True)
+        cards = "".join(
+            f"<a class='card' href='/items/{quote(draft.content_item_id, safe='')}'>"
+            f"<span class='badge {escape(status)}'>{escape(status.replace('_', ' '))}</span>"
+            f"<h2>{escape(draft.title)}</h2><p class='muted'>{escape(draft.dek)}</p>"
+            f"<small class='muted'>{escape(draft.created_at.isoformat())} · {len(draft.sections)} sections</small></a>"
+            for draft, status in entries
+        ) or "<article class='panel empty'><h2>No drafts yet</h2><p class='muted'>Select a story in the editorial queue to generate the first review draft.</p></article>"
+        return _page(
+            "Draft library",
+            "<header class='page-head'><p class='eyebrow'>DRAFT LIBRARY</p>"
+            "<h1>Every version, easy to <span class='accent'>find.</span></h1>"
+            "<p class='muted'>Review all generated article versions without mixing them into discovery.</p></header>"
+            f"<section class='grid'>{cards}</section>",
+            active="drafts",
         )
 
     @app.get("/preferences", response_class=HTMLResponse)
@@ -214,6 +329,7 @@ def create_app(
             "<h1>Your taste, made <span class='accent'>repeatable.</span></h1>"
             "<p class='muted'>Only explicit, reusable feedback appears here. Story-only notes stay with their story.</p></header>"
             f"<section class='stack'>{''.join(sections)}</section>",
+            active="memory",
         )
 
     @app.get("/items/{content_item_id}", response_class=HTMLResponse)
@@ -225,6 +341,7 @@ def create_app(
         brief = packet.brief
         feedback = store.list_feedback(content_item_id)
         latest_draft = store.get_latest_draft(content_item_id)
+        discord_request = store.get_latest_discord_request(content_item_id)
         quality_report = evaluate_draft(packet, latest_draft) if latest_draft else None
         latest_decision = store.get_latest_decision(content_item_id)
         decision_for_latest = (
@@ -282,11 +399,16 @@ def create_app(
             for scope in FEEDBACK_SCOPES
         )
         encoded_id = quote(content_item_id, safe="")
-        if record.status in {"approved", "ready_for_approval"}:
+        if record.status == "approved":
             review_controls = (
                 f"<div class='decision'><span class='badge {escape(record.status)}'>"
                 f"{escape(record.status.replace('_', ' '))}</span>"
-                "<p>This story is locked to its persisted draft decision. Final approval remains in Discord.</p></div>"
+                "<p>This draft was approved in the CodeQuest workspace. Publishing remains a separate step.</p></div>"
+            )
+        elif record.status == "ready_for_approval":
+            review_controls = (
+                "<div class='decision'><span class='badge ready_for_approval'>Ready for review</span>"
+                "<p>The workspace editor can now make the final decision.</p></div>"
             )
         else:
             review_controls = (
@@ -303,20 +425,57 @@ def create_app(
             )
         if latest_draft and quality_report:
             approval_actions = ""
-            if record.status not in {"approved", "ready_for_approval"}:
+            if record.status != "approved" and not (
+                decision_for_latest
+                and decision_for_latest.outcome == DecisionOutcome.NEEDS_REVISION
+            ):
                 approval_actions = (
                     f"<form method='post' action='/items/{encoded_id}/decision'>"
                     "<textarea name='notes' placeholder='Approval note or required revisions'></textarea>"
-                    f"<button class='button-approve' name='outcome' value='ready_for_approval' type='submit'"
-                    f"{' disabled' if not quality_report.can_approve else ''}>Queue for Discord approval</button>"
+                    f"<button class='button-approve' name='outcome' value='approved' type='submit'"
+                    f"{' disabled' if not quality_report.can_approve else ''}>Approve in workspace</button>"
                     "<button class='button-revise' name='outcome' value='needs_revision' type='submit'>"
                     "Request revision</button></form>"
+                )
+            if discord_request and discord_request.status == DiscordApprovalStatus.PENDING:
+                discord_controls = (
+                    "<p><strong>Shared with Discord for optional feedback</strong></p>"
+                    f"<small class='muted'>Request {escape(discord_request.request_id)}</small>"
+                )
+            elif discord_request and discord_request.status == DiscordApprovalStatus.DELIVERY_FAILED:
+                discord_controls = (
+                    "<p class='muted'>The last delivery failed. Check the Discord settings and retry.</p>"
+                    f"<form method='post' action='/items/{encoded_id}/discord'><button type='submit'>Retry Discord delivery</button></form>"
+                )
+            elif discord_request and discord_request.status in {
+                DiscordApprovalStatus.ENDORSED,
+                DiscordApprovalStatus.REVISION_SUGGESTED,
+            }:
+                discord_controls = (
+                    f"<p><strong>Discord response: {escape(discord_request.status.value.replace('_', ' '))}</strong></p>"
+                    + (
+                        f"<p>{escape(discord_request.revision_notes)}</p>"
+                        if discord_request.revision_notes
+                        else ""
+                    )
+                    + "<small class='muted'>Advisory only—the workspace decision is authoritative.</small>"
+                )
+            elif record.status in {"selected", "ready_for_approval", "approved"}:
+                discord_controls = (
+                    "<p class='muted'>Optionally share this version for a quick team signal. Discord cannot approve it.</p>"
+                    f"<form method='post' action='/items/{encoded_id}/discord'><button type='submit'>Share with Discord</button></form>"
+                )
+            else:
+                discord_controls = (
+                    "<p class='muted'>Generate the requested revision before sharing another version with Discord.</p>"
                 )
             approval_panel = (
                 "<section class='panel'><h2>Quality gate</h2>"
                 f"{_quality_html(quality_report)}</section>"
                 "<section class='panel'><h2>Editorial decision</h2>"
                 f"{_decision_html(decision_for_latest)}{approval_actions}</section>"
+                "<section class='panel discord-panel'><span class='badge discord-badge'>Discord · optional</span>"
+                f"{discord_controls}</section>"
             )
         else:
             approval_panel = (
@@ -349,6 +508,7 @@ def create_app(
             f"<section class='panel'><h2>Effective writing profile</h2>{_rules_html(preference_profile)}"
             f"<pre>{escape(preference_profile.writer_instructions())}</pre></section>"
             f"<section class='panel'><h2>Feedback history</h2>{feedback_html}</section></aside></div>",
+            active="editorial",
         )
 
     @app.post("/items/{content_item_id}/status")
@@ -413,6 +573,125 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return RedirectResponse(f"/items/{quote(content_item_id, safe='')}", status_code=303)
+
+    @app.post("/items/{content_item_id}/discord")
+    async def send_to_discord(content_item_id: str) -> RedirectResponse:
+        record = store.get_item(content_item_id)
+        draft = store.get_latest_draft(content_item_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Editorial item not found")
+        if draft is None or record.status not in {"selected", "ready_for_approval", "approved"}:
+            raise HTTPException(
+                status_code=409,
+                detail="Only a reviewed draft can be shared with Discord.",
+            )
+        if not evaluate_draft(record.packet, draft).can_approve:
+            raise HTTPException(status_code=409, detail="Resolve blocking quality issues first.")
+        request = DiscordApprovalRequest(
+            content_item_id=content_item_id,
+            draft_id=draft.draft_id,
+        )
+        try:
+            store.create_discord_request(request)
+            channel_id, message_id = await bridge_factory().send_request(
+                request,
+                draft,
+                evaluate_draft(record.packet, draft),
+            )
+            store.update_discord_delivery(request.request_id, channel_id, message_id)
+        except (KeyError, ValueError) as exc:
+            if store.get_discord_request(request.request_id):
+                store.mark_discord_delivery_failed(request.request_id)
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except Exception as exc:
+            store.mark_discord_delivery_failed(request.request_id)
+            raise HTTPException(
+                status_code=502,
+                detail="Discord delivery failed; the draft remains unapproved.",
+            ) from exc
+        return RedirectResponse(f"/items/{quote(content_item_id, safe='')}", status_code=303)
+
+    @app.post("/discord/interactions")
+    async def discord_interactions(incoming: Request) -> JSONResponse:
+        body = await incoming.body()
+        try:
+            config = DiscordConfig.from_env()
+        except ValueError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        if not verify_discord_signature(
+            config.public_key,
+            incoming.headers.get("x-signature-ed25519", ""),
+            incoming.headers.get("x-signature-timestamp", ""),
+            body,
+        ):
+            raise HTTPException(status_code=401, detail="Invalid Discord signature")
+        payload = await incoming.json()
+        interaction_type = payload.get("type")
+        if interaction_type == 1:
+            return JSONResponse({"type": 1})
+        actor = payload.get("member", {}).get("user") or payload.get("user", {})
+        actor_id = str(actor.get("id", "unknown"))
+        actor_name = str(actor.get("global_name") or actor.get("username") or "Discord editor")
+        custom_id = str(payload.get("data", {}).get("custom_id", ""))
+        if interaction_type == 3 and custom_id.startswith("cq:revise:"):
+            return JSONResponse(revision_modal(custom_id.removeprefix("cq:revise:")))
+        bridge = bridge_factory()
+        if interaction_type == 3 and custom_id.startswith("cq:approve:"):
+            request_id = custom_id.removeprefix("cq:approve:")
+            try:
+                resolved = store.resolve_discord_request(
+                    request_id,
+                    DiscordApprovalStatus.ENDORSED,
+                    actor_id,
+                    actor_name,
+                )
+            except KeyError as exc:
+                raise HTTPException(status_code=404, detail="Approval request not found") from exc
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            return JSONResponse(
+                {
+                    "type": 7,
+                    "data": {
+                        "content": f"👍 Looks good to {actor_name}. Advisory only—final approval remains in CodeQuest.",
+                        "embeds": payload.get("message", {}).get("embeds", []),
+                        "components": [],
+                        "allowed_mentions": {"parse": []},
+                    },
+                }
+            )
+        if interaction_type == 5 and custom_id.startswith("cq:revision_modal:"):
+            request_id = custom_id.removeprefix("cq:revision_modal:")
+            notes = modal_value(payload, "revision_notes")
+            try:
+                resolved = store.resolve_discord_request(
+                    request_id,
+                    DiscordApprovalStatus.REVISION_SUGGESTED,
+                    actor_id,
+                    actor_name,
+                    notes,
+                )
+                await bridge.close_request_message(
+                    resolved,
+                    f"📝 Changes suggested by {actor_name}: {notes}",
+                )
+            except KeyError as exc:
+                raise HTTPException(status_code=404, detail="Approval request not found") from exc
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            except Exception:
+                pass
+            return JSONResponse(
+                {
+                    "type": 4,
+                    "data": {
+                        "content": "Suggestions were returned to the CodeQuest workspace for the editor to consider.",
+                        "flags": 64,
+                        "allowed_mentions": {"parse": []},
+                    },
+                }
+            )
+        raise HTTPException(status_code=400, detail="Unsupported Discord interaction")
 
     @app.post("/items/{content_item_id}/feedback")
     def add_feedback(
