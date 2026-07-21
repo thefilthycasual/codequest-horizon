@@ -17,6 +17,8 @@ from .models import (
     EditorialPacket,
     PreferenceScope,
     PreferenceSignal,
+    WordPressDelivery,
+    WordPressDeliveryStatus,
 )
 
 
@@ -155,6 +157,25 @@ class EditorialStore:
                     outcome TEXT NOT NULL,
                     decision_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
+                    FOREIGN KEY (content_item_id)
+                        REFERENCES editorial_items(content_item_id)
+                        ON DELETE CASCADE,
+                    FOREIGN KEY (draft_id)
+                        REFERENCES editorial_drafts(draft_id)
+                        ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS wordpress_deliveries (
+                    delivery_id TEXT PRIMARY KEY,
+                    content_item_id TEXT NOT NULL,
+                    draft_id TEXT NOT NULL UNIQUE,
+                    status TEXT NOT NULL,
+                    delivery_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
                     FOREIGN KEY (content_item_id)
                         REFERENCES editorial_items(content_item_id)
                         ON DELETE CASCADE,
@@ -486,6 +507,114 @@ class EditorialStore:
             )
         if cursor.rowcount != 1:
             raise KeyError(request.request_id)
+
+    def begin_wordpress_delivery(
+        self, content_item_id: str, draft_id: str
+    ) -> WordPressDelivery:
+        record = self.get_item(content_item_id)
+        latest_draft = self.get_latest_draft(content_item_id)
+        latest_decision = self.get_latest_decision(content_item_id)
+        if record is None:
+            raise KeyError(content_item_id)
+        if latest_draft is None or latest_draft.draft_id != draft_id:
+            raise ValueError("Only the latest draft can be delivered to WordPress.")
+        if (
+            record.status != "approved"
+            or latest_decision is None
+            or latest_decision.draft_id != draft_id
+            or latest_decision.outcome != DecisionOutcome.APPROVED
+        ):
+            raise ValueError("The exact draft must be approved in the workspace first.")
+        existing = self.get_wordpress_delivery(draft_id)
+        if existing:
+            if existing.status == WordPressDeliveryStatus.DRAFT_CREATED:
+                return existing
+            existing.status = WordPressDeliveryStatus.PENDING
+            existing.attempts += 1
+            existing.error_message = ""
+            existing.updated_at = datetime.now(timezone.utc)
+            self._save_wordpress_delivery(existing)
+            return existing
+        delivery = WordPressDelivery(
+            content_item_id=content_item_id,
+            draft_id=draft_id,
+        )
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO wordpress_deliveries "
+                "(delivery_id, content_item_id, draft_id, status, delivery_json, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    delivery.delivery_id,
+                    delivery.content_item_id,
+                    delivery.draft_id,
+                    delivery.status.value,
+                    delivery.model_dump_json(),
+                    delivery.created_at.isoformat(),
+                    delivery.updated_at.isoformat(),
+                ),
+            )
+        return delivery
+
+    def get_wordpress_delivery(self, draft_id: str) -> WordPressDelivery | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT delivery_json FROM wordpress_deliveries WHERE draft_id = ?",
+                (draft_id,),
+            ).fetchone()
+        return WordPressDelivery.model_validate_json(row["delivery_json"]) if row else None
+
+    def complete_wordpress_delivery(
+        self,
+        delivery_id: str,
+        post_id: int,
+        post_url: str,
+        editor_url: str,
+    ) -> WordPressDelivery:
+        delivery = self._get_wordpress_delivery_by_id(delivery_id)
+        delivery.status = WordPressDeliveryStatus.DRAFT_CREATED
+        delivery.post_id = post_id
+        delivery.post_url = post_url
+        delivery.editor_url = editor_url
+        delivery.error_message = ""
+        delivery.updated_at = datetime.now(timezone.utc)
+        self._save_wordpress_delivery(delivery)
+        return delivery
+
+    def fail_wordpress_delivery(
+        self, delivery_id: str, error_message: str
+    ) -> WordPressDelivery:
+        delivery = self._get_wordpress_delivery_by_id(delivery_id)
+        delivery.status = WordPressDeliveryStatus.FAILED
+        delivery.error_message = error_message.strip()[:500]
+        delivery.updated_at = datetime.now(timezone.utc)
+        self._save_wordpress_delivery(delivery)
+        return delivery
+
+    def _get_wordpress_delivery_by_id(self, delivery_id: str) -> WordPressDelivery:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT delivery_json FROM wordpress_deliveries WHERE delivery_id = ?",
+                (delivery_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(delivery_id)
+        return WordPressDelivery.model_validate_json(row["delivery_json"])
+
+    def _save_wordpress_delivery(self, delivery: WordPressDelivery) -> None:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE wordpress_deliveries SET status = ?, delivery_json = ?, updated_at = ? "
+                "WHERE delivery_id = ?",
+                (
+                    delivery.status.value,
+                    delivery.model_dump_json(),
+                    delivery.updated_at.isoformat(),
+                    delivery.delivery_id,
+                ),
+            )
+        if cursor.rowcount != 1:
+            raise KeyError(delivery.delivery_id)
 
     def list_applicable_feedback(
         self,

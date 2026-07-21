@@ -39,6 +39,11 @@ from .store import (
     FEEDBACK_SIGNALS,
     EditorialStore,
 )
+from .wordpress import (
+    WordPressConfig,
+    WordPressPublisher,
+    build_wordpress_payload,
+)
 
 
 _STYLE = """
@@ -217,6 +222,7 @@ def create_app(
     db_path: str | Path = "data/codequest-editorial.sqlite3",
     draft_generator_factory: Callable[[], ArticleDraftGenerator] | None = None,
     discord_bridge_factory: Callable[[], DiscordApprovalBridge] | None = None,
+    wordpress_publisher_factory: Callable[[], WordPressPublisher] | None = None,
 ) -> FastAPI:
     app = FastAPI(title="CodeQuest Editorial Workspace")
     store = EditorialStore(db_path)
@@ -224,6 +230,28 @@ def create_app(
     bridge_factory = discord_bridge_factory or (
         lambda: DiscordApprovalBridge(DiscordConfig.from_env())
     )
+    publisher_factory = wordpress_publisher_factory or (
+        lambda: WordPressPublisher(WordPressConfig.from_env())
+    )
+
+    def approved_draft(content_item_id: str):
+        record = store.get_item(content_item_id)
+        draft = store.get_latest_draft(content_item_id)
+        decision = store.get_latest_decision(content_item_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Editorial item not found")
+        if (
+            draft is None
+            or decision is None
+            or record.status != "approved"
+            or decision.outcome != DecisionOutcome.APPROVED
+            or decision.draft_id != draft.draft_id
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="The exact latest draft must be approved in the workspace first.",
+            )
+        return record, draft
 
     @app.get("/", response_class=HTMLResponse)
     def overview() -> HTMLResponse:
@@ -342,6 +370,9 @@ def create_app(
         feedback = store.list_feedback(content_item_id)
         latest_draft = store.get_latest_draft(content_item_id)
         discord_request = store.get_latest_discord_request(content_item_id)
+        wordpress_delivery = (
+            store.get_wordpress_delivery(latest_draft.draft_id) if latest_draft else None
+        )
         quality_report = evaluate_draft(packet, latest_draft) if latest_draft else None
         latest_decision = store.get_latest_decision(content_item_id)
         decision_for_latest = (
@@ -482,6 +513,30 @@ def create_app(
                 "<section class='panel'><h2>Quality gate</h2>"
                 "<p class='muted'>Generate a draft to run deterministic checks.</p></section>"
             )
+        publishing_panel = ""
+        if latest_draft and record.status == "approved":
+            if wordpress_delivery and wordpress_delivery.status.value == "draft_created":
+                publishing_controls = (
+                    "<p><strong>WordPress draft created</strong></p>"
+                    f"<p class='muted'>Post #{wordpress_delivery.post_id} · delivered in {wordpress_delivery.attempts} attempt(s)</p>"
+                    f"<a class='text-link' href='{escape(wordpress_delivery.editor_url or '', quote=True)}' target='_blank' rel='noopener'>Open in WordPress editor →</a>"
+                )
+            elif wordpress_delivery and wordpress_delivery.status.value == "failed":
+                publishing_controls = (
+                    "<p><strong>Delivery failed</strong></p>"
+                    f"<p class='muted'>{escape(wordpress_delivery.error_message)}</p>"
+                    f"<form method='post' action='/items/{encoded_id}/wordpress'><button type='submit'>Retry WordPress draft</button></form>"
+                )
+            else:
+                publishing_controls = (
+                    "<p class='muted'>Preview the exact approved payload, then create a WordPress draft. This cannot publish the post.</p>"
+                    f"<a class='text-link' href='/items/{encoded_id}/wordpress/preview'>Preview WordPress payload →</a>"
+                    f"<form method='post' action='/items/{encoded_id}/wordpress'><button type='submit'>Create WordPress draft</button></form>"
+                )
+            publishing_panel = (
+                "<section class='panel'><span class='badge approved'>WordPress · draft only</span>"
+                f"<h2>Delivery</h2>{publishing_controls}</section>"
+            )
         return _page(
             brief.working_title,
             f"<header class='page-head'><p class='eyebrow'>{escape(brief.article_type.value.replace('_', ' ').upper())}</p>"
@@ -497,7 +552,7 @@ def create_app(
             f"<article class='panel'><h2>Evidence</h2>{sources}</article>"
             f"{_draft_html(latest_draft)}</section>"
             "<aside class='stack'><section class='panel'><h2>Review state</h2>"
-            f"{review_controls}</section>{approval_panel}"
+            f"{review_controls}</section>{approval_panel}{publishing_panel}"
             "<section class='panel'><h2>Add feedback</h2>"
             f"<form method='post' action='/items/{encoded_id}/feedback'>"
             f"<select name='signal'>{signal_options}</select>"
@@ -609,6 +664,62 @@ def create_app(
                 status_code=502,
                 detail="Discord delivery failed; the draft remains unapproved.",
             ) from exc
+        return RedirectResponse(f"/items/{quote(content_item_id, safe='')}", status_code=303)
+
+    @app.get("/items/{content_item_id}/wordpress/preview", response_class=HTMLResponse)
+    def preview_wordpress(content_item_id: str) -> HTMLResponse:
+        _record, draft = approved_draft(content_item_id)
+        payload = build_wordpress_payload(draft)
+        encoded_id = quote(content_item_id, safe="")
+        return _page(
+            f"WordPress preview · {draft.title}",
+            "<div class='crumb'><a href='/drafts'>Draft library</a><span>›</span>"
+            f"<a href='/items/{encoded_id}'>Article review</a><span>›</span><span>WordPress preview</span></div>"
+            "<header class='page-head'><p class='eyebrow'>WORDPRESS PAYLOAD PREVIEW</p>"
+            f"<h1>{escape(draft.title)}</h1>"
+            "<p class='muted'>This is the exact article body that will be sent with status <strong>draft</strong>.</p></header>"
+            "<div class='layout'><article class='panel draft'>"
+            f"<h2>{escape(str(payload['title']))}</h2>{payload['content']}</article>"
+            "<aside class='stack'><section class='panel'><span class='badge approved'>Draft only</span>"
+            "<h2>Ready to deliver?</h2><p class='muted'>WordPress will create an unpublished draft. Publishing remains manual.</p>"
+            f"<form method='post' action='/items/{encoded_id}/wordpress'><button type='submit'>Create WordPress draft</button></form>"
+            f"<a class='text-link' href='/items/{encoded_id}'>Return to article review</a></section></aside></div>",
+            active="drafts",
+        )
+
+    @app.post("/items/{content_item_id}/wordpress")
+    async def create_wordpress_draft(content_item_id: str) -> RedirectResponse:
+        _record, draft = approved_draft(content_item_id)
+        try:
+            delivery = store.begin_wordpress_delivery(content_item_id, draft.draft_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Editorial item not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if delivery.status.value == "draft_created":
+            return RedirectResponse(
+                f"/items/{quote(content_item_id, safe='')}", status_code=303
+            )
+        try:
+            result = await publisher_factory().create_draft(draft)
+        except ValueError as exc:
+            store.fail_wordpress_delivery(delivery.delivery_id, str(exc))
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            store.fail_wordpress_delivery(
+                delivery.delivery_id,
+                "WordPress delivery failed. Check the connection and credentials, then retry.",
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="WordPress delivery failed; no successful draft was recorded.",
+            ) from exc
+        store.complete_wordpress_delivery(
+            delivery.delivery_id,
+            result.post_id,
+            result.post_url,
+            result.editor_url,
+        )
         return RedirectResponse(f"/items/{quote(content_item_id, safe='')}", status_code=303)
 
     @app.post("/discord/interactions")

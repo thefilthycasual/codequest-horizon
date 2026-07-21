@@ -206,3 +206,25 @@ class DiscordApprovalRequest(BaseModel):
     revision_notes: str = ""
     requested_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     resolved_at: datetime | None = None
+
+
+class WordPressDeliveryStatus(str, Enum):
+    PENDING = "pending"
+    DRAFT_CREATED = "draft_created"
+    FAILED = "failed"
+
+
+class WordPressDelivery(BaseModel):
+    """Durable record for delivering one exact approved draft to WordPress."""
+
+    delivery_id: str = Field(default_factory=lambda: f"wordpress_{uuid4().hex}")
+    content_item_id: str
+    draft_id: str
+    status: WordPressDeliveryStatus = WordPressDeliveryStatus.PENDING
+    attempts: int = 1
+    post_id: int | None = None
+    post_url: str | None = None
+    editor_url: str | None = None
+    error_message: str = ""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

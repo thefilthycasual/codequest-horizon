@@ -25,6 +25,10 @@ services:
       - DISCORD_BOT_TOKEN
       - DISCORD_APPROVAL_CHANNEL_ID
       - DISCORD_APPLICATION_PUBLIC_KEY
+      - WORDPRESS_BASE_URL
+      - WORDPRESS_USERNAME
+      - WORDPRESS_APP_PASSWORD
+      - WORDPRESS_DRY_RUN
     ports:
       - "127.0.0.1:8765:8765"
     entrypoint: ["uv", "run", "codequest-workspace"]

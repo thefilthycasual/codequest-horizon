@@ -19,9 +19,12 @@ from .models import (
     PreferenceScope,
     PreferenceSignal,
     QualityCheckStatus,
+    WordPressDelivery,
+    WordPressDeliveryStatus,
 )
 from .preferences import build_preference_profile
 from .quality import evaluate_draft
+from .wordpress import WordPressPublisher, build_wordpress_payload
 
 __all__ = [
     "ArticleDraft",
@@ -41,8 +44,12 @@ __all__ = [
     "PreferenceScope",
     "PreferenceSignal",
     "QualityCheckStatus",
+    "WordPressDelivery",
+    "WordPressDeliveryStatus",
+    "WordPressPublisher",
     "build_editorial_packet",
     "build_draft_prompt",
     "build_preference_profile",
     "evaluate_draft",
+    "build_wordpress_payload",
 ]
