@@ -65,14 +65,22 @@ def test_generator_grounds_draft_and_snapshots_preferences(tmp_path) -> None:
     profile = build_preference_profile(store, packet.brief.article_type)
     writer = FakeWriter(_response())
 
-    draft = asyncio.run(ArticleDraftGenerator(writer, "writer-cloud").generate(packet, profile))
+    draft = asyncio.run(
+        ArticleDraftGenerator(writer, "writer-cloud").generate(
+            packet,
+            profile,
+            ["Make the independent test limitation explicit."],
+        )
+    )
     store.save_draft(draft)
 
     assert draft.source_map["S1"] == packet.evidence.sources[0].url
     assert draft.preference_rules[0].instruction == "Avoid generic hype."
+    assert draft.revision_notes == ["Make the independent test limitation explicit."]
     assert store.get_latest_draft(packet.brief.content_item_id).draft_id == draft.draft_id
     assert "Avoid generic hype." in writer.calls[0]["user"]
     assert '"id": "S1"' in writer.calls[0]["user"]
+    assert "Make the independent test limitation explicit." in writer.calls[0]["user"]
     assert writer.calls[0]["temperature"] == 0.2
 
 

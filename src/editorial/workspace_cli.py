@@ -71,13 +71,14 @@ def main() -> int:
             record.packet.brief.article_type,
             args.content_item_id,
         )
+        revision_notes = store.latest_revision_notes(args.content_item_id)
         if args.dry_run:
-            print(build_draft_prompt(record.packet, profile))
+            print(build_draft_prompt(record.packet, profile, revision_notes))
             return 0
         if record.status not in {"selected", "needs_revision"}:
             parser.error("Draft generation requires a Selected or Needs Revision story.")
         generator = create_ollama_cloud_draft_generator()
-        draft = asyncio.run(generator.generate(record.packet, profile))
+        draft = asyncio.run(generator.generate(record.packet, profile, revision_notes))
         store.save_draft(draft)
         print(f"Saved unpublished draft {draft.draft_id} for {args.content_item_id}")
         return 0

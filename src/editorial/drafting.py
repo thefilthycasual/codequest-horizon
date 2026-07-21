@@ -56,6 +56,7 @@ class _GeneratedDraft(BaseModel):
 def build_draft_prompt(
     packet: EditorialPacket,
     profile: EditorialPreferenceProfile,
+    revision_notes: list[str] | None = None,
 ) -> str:
     sources = [
         {
@@ -81,6 +82,8 @@ def build_draft_prompt(
         + json.dumps(assignment, ensure_ascii=False, indent=2)
         + "\n\nWRITING PREFERENCES\n"
         + profile.writer_instructions()
+        + "\n\nREVISION REQUESTS\n"
+        + (json.dumps(revision_notes, ensure_ascii=False, indent=2) if revision_notes else "[]")
         + "\n\nEVIDENCE\n"
         + json.dumps(sources, ensure_ascii=False, indent=2)
     )
@@ -97,10 +100,11 @@ class ArticleDraftGenerator:
         self,
         packet: EditorialPacket,
         profile: EditorialPreferenceProfile,
+        revision_notes: list[str] | None = None,
     ) -> ArticleDraft:
         response = await self.client.complete(
             system=DRAFT_SYSTEM_PROMPT,
-            user=build_draft_prompt(packet, profile),
+            user=build_draft_prompt(packet, profile, revision_notes),
             temperature=0.2,
             max_tokens=6_000,
         )
@@ -133,6 +137,7 @@ class ArticleDraftGenerator:
             sections=generated.sections,
             source_map=source_map,
             preference_rules=profile.rules,
+            revision_notes=revision_notes or [],
             generator_model=self.model_name,
             prompt_version=PROMPT_VERSION,
         )

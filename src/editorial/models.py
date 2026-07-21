@@ -140,6 +140,45 @@ class ArticleDraft(BaseModel):
     sections: list[DraftSection] = Field(min_length=1)
     source_map: dict[str, HttpUrl]
     preference_rules: list[PreferenceRule] = Field(default_factory=list)
+    revision_notes: list[str] = Field(default_factory=list)
     generator_model: str
     prompt_version: str = "codequest-draft-v1"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class QualityCheckStatus(str, Enum):
+    PASS = "pass"
+    WARNING = "warning"
+    BLOCK = "block"
+
+
+class DraftQualityCheck(BaseModel):
+    key: str
+    label: str
+    status: QualityCheckStatus
+    detail: str
+
+
+class DraftQualityReport(BaseModel):
+    draft_id: str
+    checks: list[DraftQualityCheck]
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @property
+    def can_approve(self) -> bool:
+        return all(check.status != QualityCheckStatus.BLOCK for check in self.checks)
+
+
+class DecisionOutcome(str, Enum):
+    APPROVED = "approved"
+    NEEDS_REVISION = "needs_revision"
+
+
+class DraftDecision(BaseModel):
+    decision_id: str = Field(default_factory=lambda: f"decision_{uuid4().hex}")
+    content_item_id: str
+    draft_id: str
+    outcome: DecisionOutcome
+    notes: str = ""
+    quality_report: DraftQualityReport
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

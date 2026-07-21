@@ -35,7 +35,7 @@ def _packet():
 
 
 class _StubDraftGenerator:
-    async def generate(self, packet, profile):
+    async def generate(self, packet, profile, revision_notes=None):
         return ArticleDraft(
             content_item_id=packet.brief.content_item_id,
             title="A <script>grounded</script> review draft",
@@ -53,6 +53,7 @@ class _StubDraftGenerator:
             ],
             source_map={"S1": packet.evidence.sources[0].url},
             preference_rules=profile.rules,
+            revision_notes=revision_notes or [],
             generator_model="test-writer",
         )
 
@@ -79,11 +80,11 @@ def test_store_preserves_status_when_refreshing_packet(tmp_path) -> None:
     store = EditorialStore(tmp_path / "editorial.sqlite3")
     packet = _packet()
     store.save_packet(packet)
-    store.set_status(packet.brief.content_item_id, "approved")
+    store.set_status(packet.brief.content_item_id, "selected")
 
     store.save_packet(packet)
 
-    assert store.get_item(packet.brief.content_item_id).status == "approved"
+    assert store.get_item(packet.brief.content_item_id).status == "selected"
 
 
 def test_store_rejects_unknown_status_and_empty_feedback(tmp_path) -> None:
@@ -112,7 +113,7 @@ def test_workspace_renders_inbox_detail_and_escaped_content(tmp_path) -> None:
     detail = client.get("/items/rss%3Acodequest%3Aworkspace-1")
 
     assert inbox.status_code == 200
-    assert "Candidate stories" in inbox.text
+    assert "Find the signal" in inbox.text
     assert "&lt;script&gt;" in inbox.text
     assert "<script>alert" not in inbox.text
     assert detail.status_code == 200
@@ -155,7 +156,7 @@ def test_workspace_records_status_and_feedback(tmp_path) -> None:
 def test_workspace_returns_empty_state_and_missing_item(tmp_path) -> None:
     client = TestClient(create_app(tmp_path / "editorial.sqlite3"))
 
-    assert "No candidates yet" in client.get("/").text
+    assert "No candidates" in client.get("/").text
     assert client.get("/items/missing").status_code == 404
 
 
@@ -191,3 +192,39 @@ def test_workspace_blocks_draft_generation_for_candidate(tmp_path) -> None:
     response = client.post(f"/items/{packet.brief.content_item_id}/draft")
 
     assert response.status_code == 409
+
+
+def test_workspace_persists_human_approval_for_latest_draft(tmp_path) -> None:
+    db_path = tmp_path / "editorial.sqlite3"
+    packet = _packet()
+    store = EditorialStore(db_path)
+    store.save_packet(packet)
+    store.set_status(packet.brief.content_item_id, "selected")
+    client = TestClient(create_app(db_path, draft_generator_factory=_StubDraftGenerator))
+    client.post(f"/items/{packet.brief.content_item_id}/draft")
+
+    response = client.post(
+        f"/items/{packet.brief.content_item_id}/decision",
+        data={"outcome": "approved", "notes": "Ready for publishing handoff."},
+        follow_redirects=False,
+    )
+    detail = client.get(f"/items/{packet.brief.content_item_id}")
+
+    assert response.status_code == 303
+    assert store.get_item(packet.brief.content_item_id).status == "approved"
+    assert store.get_latest_decision(packet.brief.content_item_id).notes.startswith("Ready")
+    assert "persisted draft decision" in detail.text
+
+
+def test_workspace_rejects_status_only_approval(tmp_path) -> None:
+    db_path = tmp_path / "editorial.sqlite3"
+    packet = _packet()
+    EditorialStore(db_path).save_packet(packet)
+    client = TestClient(create_app(db_path))
+
+    response = client.post(
+        f"/items/{packet.brief.content_item_id}/status",
+        data={"status": "approved"},
+    )
+
+    assert response.status_code == 400

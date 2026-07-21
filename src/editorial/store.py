@@ -8,7 +8,14 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .models import ArticleDraft, EditorialPacket, PreferenceScope, PreferenceSignal
+from .models import (
+    ArticleDraft,
+    DecisionOutcome,
+    DraftDecision,
+    EditorialPacket,
+    PreferenceScope,
+    PreferenceSignal,
+)
 
 
 EDITORIAL_STATUSES = (
@@ -117,6 +124,24 @@ class EditorialStore:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS editorial_decisions (
+                    decision_id TEXT PRIMARY KEY,
+                    content_item_id TEXT NOT NULL,
+                    draft_id TEXT NOT NULL,
+                    outcome TEXT NOT NULL,
+                    decision_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (content_item_id)
+                        REFERENCES editorial_items(content_item_id)
+                        ON DELETE CASCADE,
+                    FOREIGN KEY (draft_id)
+                        REFERENCES editorial_drafts(draft_id)
+                        ON DELETE CASCADE
+                )
+                """
+            )
 
     def save_packet(self, packet: EditorialPacket, status: str = "candidate") -> None:
         self._validate_status(status)
@@ -152,6 +177,8 @@ class EditorialStore:
 
     def set_status(self, content_item_id: str, status: str) -> None:
         self._validate_status(status)
+        if status == "approved":
+            raise ValueError("Approve the latest draft with a persisted editorial decision.")
         with self._connect() as connection:
             cursor = connection.execute(
                 "UPDATE editorial_items SET status = ?, updated_at = ? "
@@ -230,6 +257,63 @@ class EditorialStore:
                 (content_item_id,),
             ).fetchall()
         return [ArticleDraft.model_validate_json(row["draft_json"]) for row in rows]
+
+    def record_decision(self, decision: DraftDecision) -> None:
+        latest_draft = self.get_latest_draft(decision.content_item_id)
+        if latest_draft is None:
+            raise ValueError("No draft exists for this editorial item.")
+        if latest_draft.draft_id != decision.draft_id:
+            raise ValueError("Only the latest draft can receive an editorial decision.")
+        if decision.quality_report.draft_id != decision.draft_id:
+            raise ValueError("Quality report does not belong to this draft.")
+        if decision.outcome == DecisionOutcome.APPROVED and not decision.quality_report.can_approve:
+            raise ValueError("Draft has blocking quality failures and cannot be approved.")
+        if decision.outcome == DecisionOutcome.NEEDS_REVISION and not decision.notes.strip():
+            raise ValueError("Revision requests require editor notes.")
+
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO editorial_decisions "
+                "(decision_id, content_item_id, draft_id, outcome, decision_json, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    decision.decision_id,
+                    decision.content_item_id,
+                    decision.draft_id,
+                    decision.outcome.value,
+                    decision.model_dump_json(),
+                    decision.created_at.isoformat(),
+                ),
+            )
+            connection.execute(
+                "UPDATE editorial_items SET status = ?, updated_at = ? "
+                "WHERE content_item_id = ?",
+                (decision.outcome.value, _now(), decision.content_item_id),
+            )
+
+    def get_latest_decision(self, content_item_id: str) -> DraftDecision | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT decision_json FROM editorial_decisions WHERE content_item_id = ? "
+                "ORDER BY created_at DESC, decision_id DESC LIMIT 1",
+                (content_item_id,),
+            ).fetchone()
+        return DraftDecision.model_validate_json(row["decision_json"]) if row else None
+
+    def list_decisions(self, content_item_id: str) -> list[DraftDecision]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT decision_json FROM editorial_decisions WHERE content_item_id = ? "
+                "ORDER BY created_at DESC, decision_id DESC",
+                (content_item_id,),
+            ).fetchall()
+        return [DraftDecision.model_validate_json(row["decision_json"]) for row in rows]
+
+    def latest_revision_notes(self, content_item_id: str) -> list[str]:
+        decision = self.get_latest_decision(content_item_id)
+        if decision and decision.outcome == DecisionOutcome.NEEDS_REVISION:
+            return [decision.notes]
+        return []
 
     def list_applicable_feedback(
         self,

@@ -15,8 +15,9 @@ from .drafting import (
     DraftGenerationError,
     create_ollama_cloud_draft_generator,
 )
-from .models import ArticleType
+from .models import ArticleType, DecisionOutcome, DraftDecision
 from .preferences import build_preference_profile
+from .quality import evaluate_draft
 from .store import (
     EDITORIAL_STATUSES,
     FEEDBACK_DIMENSIONS,
@@ -27,25 +28,49 @@ from .store import (
 
 
 _STYLE = """
-:root{color-scheme:dark;--bg:#090d12;--panel:#111821;--line:#273241;--text:#edf3fa;
---muted:#91a0b2;--accent:#62d6a7;--warn:#f1bf62}*{box-sizing:border-box}body{margin:0;
-font:15px/1.55 ui-sans-serif,system-ui,sans-serif;background:var(--bg);color:var(--text)}
-a{color:inherit}.shell{max-width:1120px;margin:auto;padding:32px 20px}.top{display:flex;
-justify-content:space-between;align-items:center;margin-bottom:30px}.brand{font-size:20px;font-weight:750;
-text-decoration:none}.nav{display:flex;gap:18px;align-items:center}.nav a{color:var(--muted)}.eyebrow,.muted{color:var(--muted)}h1{font-size:34px;line-height:1.15;margin:4px 0 12px}
-h2{font-size:19px;margin:0 0 15px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:16px}
-.card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}.card{text-decoration:none}
-.card:hover{border-color:var(--accent)}.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;
-padding:3px 9px;color:var(--accent);font-size:12px;text-transform:uppercase;letter-spacing:.05em}.meta{display:flex;
-gap:8px;flex-wrap:wrap;margin:12px 0}.layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.8fr);gap:18px}
-.stack{display:grid;gap:18px}.source{padding:14px 0;border-top:1px solid var(--line)}.source:first-of-type{border-top:0}
-.source a{color:var(--accent);overflow-wrap:anywhere}.facts li,.questions li{margin:7px 0}form{display:grid;gap:10px}
-form+form{margin-top:14px}
-select,textarea,button{width:100%;font:inherit;color:var(--text);background:#0b1118;border:1px solid var(--line);
-border-radius:9px;padding:10px}textarea{min-height:105px;resize:vertical}button{background:var(--accent);color:#07130e;
-font-weight:750;cursor:pointer}.feedback{border-top:1px solid var(--line);padding:12px 0}.rule{border-left:3px solid var(--accent);padding-left:12px}
-.rule.avoid{border-color:var(--warn)}pre{white-space:pre-wrap;font:13px/1.55 ui-monospace,SFMono-Regular,monospace;color:var(--muted)}.empty{text-align:center;padding:70px 20px}
-@media(max-width:780px){.layout{grid-template-columns:1fr}h1{font-size:28px}}
+:root{color-scheme:light;--ink:#111827;--muted:#68707d;--soft:#f5f6f8;--panel:#fff;
+--line:#e5e7eb;--accent:#f47a2a;--accent-soft:#fff1e8;--success:#18865b;--warning:#b66a13;
+--danger:#b93a35;--shadow:0 14px 36px rgba(17,24,39,.07)}*{box-sizing:border-box}body{margin:0;
+font:15px/1.6 Arial,Helvetica,sans-serif;background:var(--soft);color:var(--ink)}a{color:inherit}
+.site-header{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.94);backdrop-filter:blur(12px);
+border-bottom:1px solid rgba(229,231,235,.8)}.top{max-width:1240px;margin:auto;min-height:72px;padding:0 24px;
+display:flex;justify-content:space-between;align-items:center}.brand{position:relative;font-size:22px;font-weight:800;
+text-decoration:none;letter-spacing:-.03em}.brand:after{content:"";position:absolute;left:2px;right:2px;bottom:-9px;
+height:3px;background:var(--accent)}.nav{display:flex;gap:24px;align-items:center}.nav a{text-decoration:none;color:#303744}
+.nav a:hover{color:var(--accent)}.horizon-chip{padding:8px 13px;border-radius:999px;background:var(--accent);
+color:#fff;font-size:12px;font-weight:700;box-shadow:0 8px 18px rgba(244,122,42,.22)}.shell{max-width:1240px;
+margin:auto;padding:48px 24px 80px}.page-head{max-width:850px;margin-bottom:34px}.eyebrow{color:var(--accent);
+font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.muted{color:var(--muted)}h1{font-size:46px;
+line-height:1.08;letter-spacing:-.045em;margin:6px 0 14px}h1 .accent{color:var(--accent)}h2{font-size:20px;
+letter-spacing:-.02em;margin:0 0 14px}h3{font-size:17px;margin:22px 0 8px}.grid{display:grid;
+grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}.card,.panel{background:var(--panel);
+border:1px solid var(--line);border-radius:18px;padding:24px}.card{position:relative;text-decoration:none;overflow:hidden;
+transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}.card:before{content:"";position:absolute;
+left:0;right:0;top:0;height:3px;background:var(--accent);opacity:0;transition:opacity .18s ease}.card:hover{transform:translateY(-3px);
+border-color:#f2c3a3;box-shadow:var(--shadow)}.card:hover:before{opacity:1}.badge{display:inline-flex;align-items:center;
+border:1px solid var(--line);border-radius:999px;padding:4px 9px;color:#4b5563;background:#fff;font-size:11px;
+font-weight:800;text-transform:uppercase;letter-spacing:.06em}.badge.candidate{background:#f3f4f6}.badge.selected,
+.badge.prefer,.badge.pass{color:var(--success);background:#eefaf5;border-color:#cdebdc}.badge.approved{color:#fff;
+background:var(--success);border-color:var(--success)}.badge.needs_revision,.badge.avoid,.badge.warning{color:var(--warning);
+background:#fff7ed;border-color:#fed7aa}.badge.block{color:var(--danger);background:#fef2f2;border-color:#fecaca}.meta{display:flex;
+align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0}.layout{display:grid;grid-template-columns:minmax(0,1.55fr)
+minmax(310px,.75fr);gap:20px;align-items:start}.stack{display:grid;gap:20px}.panel{box-shadow:0 1px 2px rgba(17,24,39,.02)}
+.source{padding:18px 0;border-top:1px solid var(--line)}.source:first-of-type{border-top:0}.source a{color:#c75b17;
+overflow-wrap:anywhere}.facts li,.questions li{margin:7px 0}form{display:grid;gap:10px}form+form{margin-top:14px}
+select,textarea,button{width:100%;font:inherit;border:1px solid #d9dde3;border-radius:12px;padding:11px 13px}
+select,textarea{color:var(--ink);background:#fff}textarea{min-height:108px;resize:vertical}button{background:var(--ink);
+color:#fff;font-weight:750;cursor:pointer;border-color:var(--ink);border-radius:999px}button:hover{filter:brightness(1.08)}
+button:disabled{opacity:.45;cursor:not-allowed}.button-approve{background:var(--accent);border-color:var(--accent)}
+.button-revise{background:#fff;color:var(--ink);border-color:#cfd4dc}.feedback{border-top:1px solid var(--line);padding:14px 0}
+.rule{border-left:3px solid var(--success);padding-left:13px}.rule.avoid{border-color:var(--accent)}pre{white-space:pre-wrap;
+font:12px/1.6 ui-monospace,SFMono-Regular,monospace;color:var(--muted);background:#f8f9fa;border-radius:12px;padding:14px}
+.draft{padding:32px}.draft h2{font-size:30px;line-height:1.15}.draft .dek{font-size:17px}.quality-check{display:grid;
+grid-template-columns:auto 1fr;gap:10px;padding:12px 0;border-top:1px solid var(--line)}.quality-check:first-of-type{border-top:0}
+.quality-check p{margin:0}.quality-check small{display:block;color:var(--muted)}.decision{background:var(--accent-soft);
+border:1px solid #ffd2b6;border-radius:14px;padding:14px}.empty{text-align:center;padding:76px 24px;background:#fff}
+@media(max-width:820px){.layout{grid-template-columns:1fr}.nav{gap:12px}.horizon-chip{display:none}h1{font-size:35px}
+.shell{padding-top:32px}}@media(max-width:560px){.top{padding:0 16px}.nav a{font-size:13px}.shell{padding-left:16px;
+padding-right:16px}.panel,.card{padding:19px}.draft{padding:22px}h1{font-size:31px}}
 """
 
 
@@ -54,11 +79,11 @@ def _page(title: str, body: str) -> HTMLResponse:
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         f"<title>{escape(title)} · CodeQuest</title><style>{_STYLE}</style></head>"
-        "<body><main class='shell'><header class='top'>"
-        "<a class='brand' href='/'>CodeQuest Editorial</a>"
-        "<nav class='nav'><a href='/preferences'>Preferences</a>"
-        "<span class='muted'>Horizon fork spike</span></nav></header>"
-        f"{body}</main></body></html>"
+        "<body><header class='site-header'><div class='top'>"
+        "<a class='brand' href='/'>CodeQuest</a>"
+        "<nav class='nav'><a href='/'>Editorial</a><a href='/preferences'>Memory</a>"
+        "<span class='horizon-chip'>Horizon powered</span></nav></div></header>"
+        f"<main class='shell'>{body}</main></body></html>"
     )
 
 
@@ -67,7 +92,7 @@ def _rules_html(profile) -> str:
         return "<p class='muted'>No applicable preferences yet.</p>"
     return "".join(
         f"<article class='feedback rule {escape(rule.signal.value)}'>"
-        f"<span class='badge'>{escape(rule.signal.value)}</span> "
+        f"<span class='badge {escape(rule.signal.value)}'>{escape(rule.signal.value)}</span> "
         f"<span class='badge'>{escape(rule.dimension.replace('_', ' '))}</span> "
         f"<span class='muted'>{escape(rule.scope.value.replace('_', ' '))}</span>"
         f"<p>{escape(rule.instruction)}</p>"
@@ -99,10 +124,31 @@ def _draft_html(draft) -> str:
             paragraphs.append(f"<p>{escape(paragraph.text)} {citations}</p>")
         sections.append(f"<section><h3>{escape(section.heading)}</h3>{''.join(paragraphs)}</section>")
     return (
-        "<article class='panel'><p class='eyebrow'>UNPUBLISHED REVIEW DRAFT</p>"
-        f"<h2>{escape(draft.title)}</h2><p class='muted'>{escape(draft.dek)}</p>"
+        "<article class='panel draft'><p class='eyebrow'>UNPUBLISHED REVIEW DRAFT</p>"
+        f"<h2>{escape(draft.title)}</h2><p class='muted dek'>{escape(draft.dek)}</p>"
         f"{''.join(sections)}<small class='muted'>Generated with {escape(draft.generator_model)} · "
         f"{escape(draft.prompt_version)} · {escape(draft.created_at.isoformat())}</small></article>"
+    )
+
+
+def _quality_html(report) -> str:
+    return "".join(
+        f"<div class='quality-check'><span class='badge {escape(check.status.value)}'>"
+        f"{escape(check.status.value)}</span><p><strong>{escape(check.label)}</strong>"
+        f"<small>{escape(check.detail)}</small></p></div>"
+        for check in report.checks
+    )
+
+
+def _decision_html(decision) -> str:
+    if decision is None:
+        return "<p class='muted'>No decision has been recorded for this story.</p>"
+    return (
+        f"<div class='decision'><span class='badge {escape(decision.outcome.value)}'>"
+        f"{escape(decision.outcome.value.replace('_', ' '))}</span>"
+        + (f"<p>{escape(decision.notes)}</p>" if decision.notes else "")
+        + f"<small class='muted'>Decision for {escape(decision.draft_id)} · "
+        f"{escape(decision.created_at.isoformat())}</small></div>"
     )
 
 
@@ -121,7 +167,7 @@ def create_app(
             return _page(
                 "Inbox",
                 "<section class='empty panel'><p class='eyebrow'>EDITORIAL INBOX</p>"
-                "<h1>No candidates yet</h1><p class='muted'>Import a Horizon content item "
+                "<h1>No candidates <span class='accent'>yet</span></h1><p class='muted'>Import a Horizon content item "
                 "with the codequest-workspace command.</p></section>",
             )
         cards = []
@@ -129,7 +175,7 @@ def create_app(
             brief = record.packet.brief
             href = f"/items/{quote(brief.content_item_id, safe='')}"
             cards.append(
-                f"<a class='card' href='{href}'><span class='badge'>{escape(record.status)}</span>"
+                f"<a class='card' href='{href}'><span class='badge {escape(record.status)}'>{escape(record.status)}</span>"
                 f"<h2>{escape(brief.working_title)}</h2>"
                 f"<p class='muted'>{escape(brief.central_angle)}</p>"
                 f"<div class='meta'><span>{escape(brief.article_type.value.replace('_', ' '))}</span>"
@@ -137,8 +183,9 @@ def create_app(
             )
         return _page(
             "Inbox",
-            "<p class='eyebrow'>EDITORIAL INBOX</p><h1>Candidate stories</h1>"
-            "<p class='muted'>Review the angle and evidence before drafting.</p>"
+            "<header class='page-head'><p class='eyebrow'>EDITORIAL INBOX</p>"
+            "<h1>Find the signal. Shape the <span class='accent'>story.</span></h1>"
+            "<p class='muted'>Review the angle, evidence, and editorial memory before drafting.</p></header>"
             f"<section class='grid'>{''.join(cards)}</section>",
         )
 
@@ -162,8 +209,9 @@ def create_app(
             )
         return _page(
             "Preferences",
-            "<p class='eyebrow'>EDITORIAL MEMORY</p><h1>Writing preferences</h1>"
-            "<p class='muted'>Only explicit, reusable feedback appears here. Story-only notes stay with their story.</p>"
+            "<header class='page-head'><p class='eyebrow'>EDITORIAL MEMORY</p>"
+            "<h1>Your taste, made <span class='accent'>repeatable.</span></h1>"
+            "<p class='muted'>Only explicit, reusable feedback appears here. Story-only notes stay with their story.</p></header>"
             f"<section class='stack'>{''.join(sections)}</section>",
         )
 
@@ -176,6 +224,13 @@ def create_app(
         brief = packet.brief
         feedback = store.list_feedback(content_item_id)
         latest_draft = store.get_latest_draft(content_item_id)
+        quality_report = evaluate_draft(packet, latest_draft) if latest_draft else None
+        latest_decision = store.get_latest_decision(content_item_id)
+        decision_for_latest = (
+            latest_decision
+            if latest_draft and latest_decision and latest_decision.draft_id == latest_draft.draft_id
+            else None
+        )
         preference_profile = build_preference_profile(
             store,
             article_type=brief.article_type,
@@ -206,6 +261,7 @@ def create_app(
             f"<option value='{status}'{' selected' if status == record.status else ''}>"
             f"{escape(status.replace('_', ' ').title())}</option>"
             for status in EDITORIAL_STATUSES
+            if status != "approved"
         )
         dimension_options = "".join(
             f"<option value='{dimension}'>{escape(dimension.replace('_', ' ').title())}</option>"
@@ -225,11 +281,53 @@ def create_app(
             for scope in FEEDBACK_SCOPES
         )
         encoded_id = quote(content_item_id, safe="")
+        if record.status == "approved":
+            review_controls = (
+                "<div class='decision'><span class='badge approved'>approved</span>"
+                "<p>This story is locked to its persisted draft decision.</p></div>"
+            )
+        else:
+            review_controls = (
+                f"<form method='post' action='/items/{encoded_id}/status'>"
+                f"<select name='status'>{status_options}</select>"
+                "<button type='submit'>Update state</button></form>"
+                + (
+                    f"<form method='post' action='/items/{encoded_id}/draft'>"
+                    f"<button type='submit'>{'Generate revision' if record.status == 'needs_revision' else 'Generate review draft'}</button>"
+                    "<small class='muted'>Uses Ollama Cloud and remains unpublished.</small></form>"
+                    if record.status in {"selected", "needs_revision"}
+                    else "<p class='muted'>Select this story before generating a draft.</p>"
+                )
+            )
+        if latest_draft and quality_report:
+            approval_actions = ""
+            if record.status != "approved":
+                approval_actions = (
+                    f"<form method='post' action='/items/{encoded_id}/decision'>"
+                    "<textarea name='notes' placeholder='Approval note or required revisions'></textarea>"
+                    f"<button class='button-approve' name='outcome' value='approved' type='submit'"
+                    f"{' disabled' if not quality_report.can_approve else ''}>Approve this draft</button>"
+                    "<button class='button-revise' name='outcome' value='needs_revision' type='submit'>"
+                    "Request revision</button></form>"
+                )
+            approval_panel = (
+                "<section class='panel'><h2>Quality gate</h2>"
+                f"{_quality_html(quality_report)}</section>"
+                "<section class='panel'><h2>Editorial decision</h2>"
+                f"{_decision_html(decision_for_latest)}{approval_actions}</section>"
+            )
+        else:
+            approval_panel = (
+                "<section class='panel'><h2>Quality gate</h2>"
+                "<p class='muted'>Generate a draft to run deterministic checks.</p></section>"
+            )
         return _page(
             brief.working_title,
-            f"<p class='eyebrow'>{escape(brief.article_type.value.replace('_', ' ').upper())}</p>"
-            f"<h1>{escape(brief.working_title)}</h1><div class='meta'><span class='badge'>{escape(record.status)}</span>"
-            f"<span>{len(packet.evidence.sources)} evidence source(s)</span></div>"
+            f"<header class='page-head'><p class='eyebrow'>{escape(brief.article_type.value.replace('_', ' ').upper())}</p>"
+            f"<h1>{escape(brief.working_title)}</h1><div class='meta'>"
+            f"<span class='badge {escape(record.status)}'>{escape(record.status)}</span>"
+            f"<span>{len(packet.evidence.sources)} evidence source(s)</span>"
+            f"<span>·</span><span>{len(store.list_drafts(content_item_id))} draft version(s)</span></div></header>"
             "<div class='layout'><section class='stack'>"
             f"<article class='panel'><h2>Central angle</h2><p>{escape(brief.central_angle)}</p>"
             f"<h2>Audience value</h2><p>{escape(brief.audience_value)}</p></article>"
@@ -238,16 +336,7 @@ def create_app(
             f"<article class='panel'><h2>Evidence</h2>{sources}</article>"
             f"{_draft_html(latest_draft)}</section>"
             "<aside class='stack'><section class='panel'><h2>Review state</h2>"
-            f"<form method='post' action='/items/{encoded_id}/status'><select name='status'>{status_options}</select>"
-            "<button type='submit'>Update state</button></form>"
-            + (
-                f"<form method='post' action='/items/{encoded_id}/draft'>"
-                "<button type='submit'>Generate review draft</button>"
-                "<small class='muted'>Uses Ollama Cloud and remains unpublished.</small></form>"
-                if record.status in {"selected", "needs_revision"}
-                else "<p class='muted'>Select this story before generating a draft.</p>"
-            )
-            + "</section>"
+            f"{review_controls}</section>{approval_panel}"
             "<section class='panel'><h2>Add feedback</h2>"
             f"<form method='post' action='/items/{encoded_id}/feedback'>"
             f"<select name='signal'>{signal_options}</select>"
@@ -285,8 +374,9 @@ def create_app(
             record.packet.brief.article_type,
             content_item_id,
         )
+        revision_notes = store.latest_revision_notes(content_item_id)
         try:
-            draft = await writer_factory().generate(record.packet, profile)
+            draft = await writer_factory().generate(record.packet, profile, revision_notes)
         except DraftGenerationError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except Exception as exc:
@@ -295,6 +385,31 @@ def create_app(
                 detail="Ollama Cloud generation failed; no draft was saved.",
             ) from exc
         store.save_draft(draft)
+        return RedirectResponse(f"/items/{quote(content_item_id, safe='')}", status_code=303)
+
+    @app.post("/items/{content_item_id}/decision")
+    def decide_draft(
+        content_item_id: str,
+        outcome: str = Form(),
+        notes: str = Form(""),
+    ) -> RedirectResponse:
+        record = store.get_item(content_item_id)
+        draft = store.get_latest_draft(content_item_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Editorial item not found")
+        if draft is None:
+            raise HTTPException(status_code=409, detail="No draft exists for this story.")
+        try:
+            decision = DraftDecision(
+                content_item_id=content_item_id,
+                draft_id=draft.draft_id,
+                outcome=DecisionOutcome(outcome),
+                notes=notes.strip(),
+                quality_report=evaluate_draft(record.packet, draft),
+            )
+            store.record_decision(decision)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         return RedirectResponse(f"/items/{quote(content_item_id, safe='')}", status_code=303)
 
     @app.post("/items/{content_item_id}/feedback")
