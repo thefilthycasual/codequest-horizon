@@ -230,3 +230,50 @@ class WordPressDelivery(BaseModel):
     error_message: str = ""
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class SocialPlatform(str, Enum):
+    """Social destinations supported by the editorial workspace."""
+
+    LINKEDIN = "linkedin"
+    X = "x"
+    FACEBOOK = "facebook"
+
+
+class SocialPostStatus(str, Enum):
+    """Review state for one platform-specific social draft."""
+
+    DRAFT = "draft"
+    APPROVED = "approved"
+    NEEDS_REVISION = "needs_revision"
+
+
+class SocialCampaign(BaseModel):
+    """A social campaign generated from one exact approved article version."""
+
+    campaign_id: str = Field(default_factory=lambda: f"campaign_{uuid4().hex}")
+    content_item_id: str
+    article_draft_id: str
+    generator_model: str
+    preference_snapshot: dict[str, list[str]] = Field(default_factory=dict)
+    prompt_version: str = "codequest-social-v1"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class SocialPostDraft(BaseModel):
+    """Versioned copy for one platform, grounded in the approved article."""
+
+    post_id: str = Field(default_factory=lambda: f"social_{uuid4().hex}")
+    campaign_id: str
+    content_item_id: str
+    article_draft_id: str
+    platform: SocialPlatform
+    body: str = Field(min_length=1)
+    source_ids: list[str] = Field(min_length=1)
+    status: SocialPostStatus = SocialPostStatus.DRAFT
+    version: int = Field(default=1, ge=1)
+    parent_post_id: str | None = None
+    edit_note: str = ""
+    generator_model: str
+    prompt_version: str = "codequest-social-v1"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

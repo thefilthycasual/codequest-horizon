@@ -32,9 +32,20 @@ from .models import (
     DraftDecision,
     DraftParagraph,
     DraftSection,
+    PreferenceSignal,
+    SocialPlatform,
+    SocialPostDraft,
+    SocialPostStatus,
 )
 from .preferences import build_preference_profile
 from .quality import evaluate_draft
+from .social import (
+    PLATFORM_LIMITS,
+    SocialCampaignGenerator,
+    SocialGenerationError,
+    create_ollama_cloud_social_generator,
+    validate_social_post,
+)
 from .store import (
     EDITORIAL_STATUSES,
     FEEDBACK_DIMENSIONS,
@@ -87,13 +98,13 @@ button:disabled{opacity:.45;cursor:not-allowed}.button-approve{background:var(--
 .button-revise{background:#fff;color:var(--ink);border-color:#cfd4dc}.feedback{border-top:1px solid var(--line);padding:14px 0}
 .rule{border-left:3px solid var(--success);padding-left:13px}.rule.avoid{border-color:var(--accent)}pre{white-space:pre-wrap;
 font:12px/1.6 ui-monospace,SFMono-Regular,monospace;color:var(--muted);background:#f8f9fa;border-radius:12px;padding:14px}
-.draft{padding:32px}.draft h2{font-size:30px;line-height:1.15}.draft .dek{font-size:17px}.quality-check{display:grid;
+.panel.draft{padding:32px}.draft h2{font-size:30px;line-height:1.15}.draft .dek{font-size:17px}.quality-check{display:grid;
 grid-template-columns:auto 1fr;gap:10px;padding:12px 0;border-top:1px solid var(--line)}.quality-check:first-of-type{border-top:0}
 .quality-check p{margin:0}.quality-check small{display:block;color:var(--muted)}.decision{background:var(--accent-soft);
 border:1px solid #ffd2b6;border-radius:14px;padding:14px}.empty{text-align:center;padding:76px 24px;background:#fff}
 @media(max-width:820px){.layout{grid-template-columns:1fr}.nav{gap:12px}.horizon-chip{display:none}h1{font-size:35px}
 .shell{padding-top:32px}}@media(max-width:560px){.top{padding:0 16px}.nav a{font-size:13px}.shell{padding-left:16px;
-padding-right:16px}.panel,.card{padding:19px}.draft{padding:22px}h1{font-size:31px}}
+padding-right:16px}.panel,.card{padding:19px}.panel.draft{padding:22px}h1{font-size:31px}}
 """
 
 _ADMIN_STYLE = """
@@ -123,6 +134,9 @@ border-radius:12px;background:#fafafa}.field-label{display:block;font-size:12px;
 gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.story-tab:hover{background:rgba(255,255,255,.65)}
 .story-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}.story-tab .count{font-size:10px;padding:1px 6px;border-radius:999px;background:#e8e9ec;color:#737985}
 .story-tab.active .count{background:var(--accent-soft);color:#c75b17}.tab-intro{display:flex;justify-content:space-between;gap:20px;align-items:end;margin-bottom:18px}.tab-intro p{margin:0}
+.subtabs{display:flex;gap:18px;border-bottom:1px solid var(--line);margin:-2px 0 20px}.subtab{padding:9px 2px 11px;text-decoration:none;color:var(--muted);font-weight:750;border-bottom:2px solid transparent}
+.subtab.active{color:var(--ink);border-bottom-color:var(--accent)}.social-list{display:grid;gap:16px}.social-card textarea{min-height:142px}.social-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}
+.social-head .badge.draft{padding:4px 9px;background:#f3f4f6}.social-meta{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:12px;margin:8px 0 14px}.inline-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.buffer-lock{border-style:dashed}
 @media(max-width:980px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:820px){.sidebar{position:static;width:auto;padding:12px}.workspace{padding-bottom:12px;margin-bottom:8px}.workspace small,.nav-label,.sidebar-foot{display:none}
 .side-nav{display:flex;overflow:auto}.nav-item{white-space:nowrap}.content{margin-left:0}.shell{padding:30px 18px 70px}.story-tabs{border-radius:10px}.story-tab{padding:8px 12px}}
@@ -134,6 +148,12 @@ _ICONS = {
     "editorial": "<svg viewBox='0 0 24 24'><path d='M4 5h16v14H4z'/><path d='M8 9h8M8 13h8M8 17h5'/></svg>",
     "drafts": "<svg viewBox='0 0 24 24'><path d='M6 3h9l4 4v14H6z'/><path d='M14 3v5h5M9 12h6M9 16h6'/></svg>",
     "memory": "<svg viewBox='0 0 24 24'><path d='M12 3a4 4 0 0 0-4 4v1a4 4 0 0 0 0 8v1a4 4 0 0 0 4 4'/><path d='M12 3a4 4 0 0 1 4 4v1a4 4 0 0 1 0 8v1a4 4 0 0 1-4 4M12 3v18'/></svg>",
+}
+
+_SOCIAL_LABELS = {
+    SocialPlatform.LINKEDIN: "LinkedIn",
+    SocialPlatform.X: "X",
+    SocialPlatform.FACEBOOK: "Facebook",
 }
 
 
@@ -244,6 +264,7 @@ def create_app(
     draft_generator_factory: Callable[[], ArticleDraftGenerator] | None = None,
     discord_bridge_factory: Callable[[], DiscordApprovalBridge] | None = None,
     wordpress_publisher_factory: Callable[[], WordPressPublisher] | None = None,
+    social_generator_factory: Callable[[], SocialCampaignGenerator] | None = None,
 ) -> FastAPI:
     app = FastAPI(title="CodeQuest Editorial Workspace")
     store = EditorialStore(db_path)
@@ -254,6 +275,7 @@ def create_app(
     publisher_factory = wordpress_publisher_factory or (
         lambda: WordPressPublisher(WordPressConfig.from_env())
     )
+    social_writer_factory = social_generator_factory or create_ollama_cloud_social_generator
 
     def approved_draft(content_item_id: str):
         record = store.get_item(content_item_id)
@@ -382,10 +404,14 @@ def create_app(
         )
 
     @app.get("/items/{content_item_id}", response_class=HTMLResponse)
-    def detail(content_item_id: str, tab: str = "overview") -> HTMLResponse:
+    def detail(
+        content_item_id: str, tab: str = "overview", channel: str = "wordpress"
+    ) -> HTMLResponse:
         allowed_tabs = {"overview", "editor", "review", "delivery", "learning"}
         if tab not in allowed_tabs:
             raise HTTPException(status_code=404, detail="Story tab not found")
+        if channel not in {"wordpress", "social"}:
+            raise HTTPException(status_code=404, detail="Delivery channel not found")
         record = store.get_item(content_item_id)
         if not record:
             raise HTTPException(status_code=404, detail="Editorial item not found")
@@ -397,6 +423,14 @@ def create_app(
         discord_request = store.get_latest_discord_request(content_item_id)
         wordpress_delivery = (
             store.get_wordpress_delivery(latest_draft.draft_id) if latest_draft else None
+        )
+        social_campaign = (
+            store.get_social_campaign(latest_draft.draft_id) if latest_draft else None
+        )
+        social_posts = (
+            store.list_latest_social_posts(social_campaign.campaign_id)
+            if social_campaign
+            else []
         )
         quality_report = evaluate_draft(packet, latest_draft) if latest_draft else None
         latest_decision = store.get_latest_decision(content_item_id)
@@ -581,6 +615,80 @@ def create_app(
                 "<section class='panel'><span class='badge warning'>WordPress · locked</span>"
                 "<h2>Draft delivery</h2><p class='muted'>Approve the latest article version in the Review tab before creating a WordPress draft.</p></section>"
             )
+        if social_campaign:
+            social_cards = []
+            for post in sorted(social_posts, key=lambda item: item.platform.value):
+                source_value = ", ".join(post.source_ids)
+                limit = PLATFORM_LIMITS[post.platform]
+                social_cards.append(
+                    "<article class='panel social-card'>"
+                    f"<div class='social-head'><h2>{escape(_SOCIAL_LABELS[post.platform])}</h2>"
+                    f"<span class='badge {escape(post.status.value)}'>{escape(post.status.value.replace('_', ' '))}</span></div>"
+                    f"<div class='social-meta'><span>Version {post.version}</span>"
+                    f"<span>{len(post.body)} / {limit} characters</span></div>"
+                    f"<form method='post' action='/items/{encoded_id}/social/{post.platform.value}/edit'>"
+                    f"<input type='hidden' name='base_post_id' value='{escape(post.post_id, quote=True)}'>"
+                    f"<textarea name='body' required maxlength='{limit}'>{escape(post.body)}</textarea>"
+                    "<label class='field-label'>Supporting evidence IDs</label>"
+                    f"<input name='source_ids' required value='{escape(source_value, quote=True)}'>"
+                    "<input name='edit_note' required placeholder='What changed in this version?'>"
+                    "<button class='button-revise' type='submit'>Save new version</button></form>"
+                    f"<form class='inline-actions' method='post' action='/items/{encoded_id}/social/{escape(post.post_id, quote=True)}/decision'>"
+                    "<button class='button-approve' name='status' value='approved' type='submit'>Approve copy</button>"
+                    "<button class='button-revise' name='status' value='needs_revision' type='submit'>Needs revision</button></form>"
+                    "</article>"
+                )
+            approved_count = sum(
+                post.status == SocialPostStatus.APPROVED for post in social_posts
+            )
+            social_preferences = store.list_social_preferences()
+            learned_rules = "".join(
+                f"<div class='version'><strong>{escape(_SOCIAL_LABELS[SocialPlatform(platform)])}</strong> · "
+                f"{escape(instruction)}</div>"
+                for platform, instructions in social_preferences.items()
+                for instruction in instructions
+            ) or "<p class='muted'>No social preferences recorded yet.</p>"
+            platform_options = "".join(
+                f"<option value='{platform.value}'>{escape(_SOCIAL_LABELS[platform])}</option>"
+                for platform in SocialPlatform
+            )
+            social_panel = (
+                "<section class='social-list'>"
+                f"{''.join(social_cards)}</section>"
+                "<section class='panel buffer-lock'><span class='badge warning'>Buffer · disabled</span>"
+                f"<h2>{approved_count} of 3 posts approved</h2>"
+                "<p class='muted'>Scheduling stays locked until a later delivery increment adds a public article URL, payload preview, and an explicit send action.</p></section>"
+                "<div class='layout'><section class='panel'><h2>Social memory</h2>"
+                f"{learned_rules}</section><aside class='panel'><h2>Teach future campaigns</h2>"
+                f"<form method='post' action='/items/{encoded_id}/social/feedback'>"
+                f"<select name='platform'>{platform_options}</select>"
+                "<select name='signal'><option value='prefer'>Prefer</option><option value='avoid'>Avoid</option></select>"
+                "<textarea name='note' required placeholder='For example: Keep LinkedIn openings practical and specific.'></textarea>"
+                "<button type='submit'>Save social preference</button></form></aside></div>"
+            )
+        elif latest_draft and record.status == "approved":
+            social_panel = (
+                "<section class='panel'><span class='badge selected'>Social campaign</span>"
+                "<h2>Create platform-specific drafts</h2>"
+                "<p class='muted'>Generate distinct LinkedIn, X, and Facebook copy from this exact approved article. Nothing will be sent to Buffer.</p>"
+                f"<form method='post' action='/items/{encoded_id}/social'><button type='submit'>Generate social campaign</button></form></section>"
+            )
+        else:
+            social_panel = (
+                "<section class='panel'><span class='badge warning'>Social · locked</span>"
+                "<h2>Campaign drafting</h2><p class='muted'>Approve the latest article version before creating social copy.</p></section>"
+            )
+        delivery_tabs = (
+            "<nav class='subtabs' aria-label='Delivery channels'>"
+            f"<a class='subtab{' active' if channel == 'wordpress' else ''}' href='/items/{encoded_id}?tab=delivery&channel=wordpress'>WordPress</a>"
+            f"<a class='subtab{' active' if channel == 'social' else ''}' href='/items/{encoded_id}?tab=delivery&channel=social'>Social campaign</a></nav>"
+        )
+        delivery_body = (
+            f"<div class='layout'><section class='stack'>{publishing_panel}</section>"
+            f"<aside class='stack'>{discord_panel}</aside></div>"
+            if channel == "wordpress"
+            else social_panel
+        )
         versions_html = "".join(
             "<div class='version'>"
             + (
@@ -637,8 +745,7 @@ def create_app(
                 f"{review_controls}</section>{decision_panel}</aside></div>"
             ),
             "delivery": (
-                f"<div class='layout'><section class='stack'>{publishing_panel}</section>"
-                f"<aside class='stack'>{discord_panel}</aside></div>"
+                f"{delivery_tabs}{delivery_body}"
             ),
             "learning": (
                 f"<div class='layout'><section class='stack'>{profile_panel}{feedback_history_panel}</section>"
@@ -649,7 +756,13 @@ def create_app(
             ("overview", "Overview", ""),
             ("editor", "Editor", str(len(draft_versions)) if draft_versions else ""),
             ("review", "Review", ""),
-            ("delivery", "Delivery", "1" if wordpress_delivery else ""),
+            (
+                "delivery",
+                "Delivery",
+                str((1 if wordpress_delivery else 0) + (1 if social_campaign else 0))
+                if wordpress_delivery or social_campaign
+                else "",
+            ),
             ("learning", "Learning", str(len(feedback)) if feedback else ""),
         )
         tabs_html = "".join(
@@ -661,7 +774,7 @@ def create_app(
             "overview": "Assignment, required facts, research gaps, and saved evidence.",
             "editor": "Read or edit the latest article while preserving every version.",
             "review": "Quality checks, workflow state, and the authoritative editorial decision.",
-            "delivery": "WordPress draft delivery and optional Discord feedback.",
+            "delivery": "Prepare website and social delivery without mixing their review steps.",
             "learning": "Story feedback and the writing preferences learned from it.",
         }
         return _page(
@@ -941,7 +1054,150 @@ def create_app(
                 detail="Discord delivery failed; the draft remains unapproved.",
             ) from exc
         return RedirectResponse(
-            f"/items/{quote(content_item_id, safe='')}?tab=delivery", status_code=303
+            f"/items/{quote(content_item_id, safe='')}?tab=delivery&channel=wordpress",
+            status_code=303,
+        )
+
+    @app.post("/items/{content_item_id}/social")
+    async def generate_social_campaign(content_item_id: str) -> RedirectResponse:
+        _record, draft = approved_draft(content_item_id)
+        if store.get_social_campaign(draft.draft_id):
+            raise HTTPException(
+                status_code=409,
+                detail="A social campaign already exists for this article version.",
+            )
+        try:
+            campaign, posts = await social_writer_factory().generate(
+                content_item_id, draft, store.list_social_preferences()
+            )
+            store.create_social_campaign(campaign, posts)
+        except SocialGenerationError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail="Ollama Cloud social generation failed; no campaign was saved.",
+            ) from exc
+        return RedirectResponse(
+            f"/items/{quote(content_item_id, safe='')}?tab=delivery&channel=social",
+            status_code=303,
+        )
+
+    @app.post("/items/{content_item_id}/social/{platform}/edit")
+    def edit_social_post(
+        content_item_id: str,
+        platform: str,
+        base_post_id: str = Form(),
+        body: str = Form(),
+        source_ids: str = Form(),
+        edit_note: str = Form(),
+    ) -> RedirectResponse:
+        _record, draft = approved_draft(content_item_id)
+        try:
+            selected_platform = SocialPlatform(platform)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="Social platform not found") from exc
+        campaign = store.get_social_campaign(draft.draft_id)
+        if campaign is None:
+            raise HTTPException(status_code=409, detail="Generate a social campaign first.")
+        versions = store.list_social_post_versions(campaign.campaign_id, selected_platform)
+        latest = versions[0] if versions else None
+        if latest is None or latest.post_id != base_post_id:
+            raise HTTPException(
+                status_code=409,
+                detail="The social draft changed while it was being edited. Reload and try again.",
+            )
+        cleaned_note = edit_note.strip()
+        cleaned_body = body.strip()
+        cleaned_sources = list(dict.fromkeys(source_ids.replace(",", " ").split()))
+        if not cleaned_note:
+            raise HTTPException(status_code=400, detail="An edit note is required.")
+        if not cleaned_body or not cleaned_sources:
+            raise HTTPException(
+                status_code=400,
+                detail="Social copy and at least one supporting evidence ID are required.",
+            )
+        edited = SocialPostDraft(
+            campaign_id=campaign.campaign_id,
+            content_item_id=content_item_id,
+            article_draft_id=draft.draft_id,
+            platform=selected_platform,
+            body=cleaned_body,
+            source_ids=cleaned_sources,
+            version=latest.version + 1,
+            parent_post_id=latest.post_id,
+            edit_note=cleaned_note,
+            generator_model=latest.generator_model,
+            prompt_version=latest.prompt_version,
+        )
+        try:
+            validate_social_post(edited, draft)
+            store.save_edited_social_post(edited, latest.post_id)
+        except SocialGenerationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/items/{quote(content_item_id, safe='')}?tab=delivery&channel=social",
+            status_code=303,
+        )
+
+    @app.post("/items/{content_item_id}/social/{post_id}/decision")
+    def decide_social_post(
+        content_item_id: str, post_id: str, status: str = Form()
+    ) -> RedirectResponse:
+        _record, draft = approved_draft(content_item_id)
+        campaign = store.get_social_campaign(draft.draft_id)
+        if campaign is None:
+            raise HTTPException(status_code=409, detail="Generate a social campaign first.")
+        latest_posts = store.list_latest_social_posts(campaign.campaign_id)
+        post = next((item for item in latest_posts if item.post_id == post_id), None)
+        if post is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Only the latest social draft can receive a review decision.",
+            )
+        try:
+            review_status = SocialPostStatus(status)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Unsupported social decision.") from exc
+        if review_status not in {
+            SocialPostStatus.APPROVED,
+            SocialPostStatus.NEEDS_REVISION,
+        }:
+            raise HTTPException(status_code=400, detail="Unsupported social decision.")
+        store.set_social_post_status(post_id, review_status)
+        return RedirectResponse(
+            f"/items/{quote(content_item_id, safe='')}?tab=delivery&channel=social",
+            status_code=303,
+        )
+
+    @app.post("/items/{content_item_id}/social/feedback")
+    def add_social_feedback(
+        content_item_id: str,
+        platform: str = Form(),
+        signal: str = Form(),
+        note: str = Form(),
+    ) -> RedirectResponse:
+        _record, draft = approved_draft(content_item_id)
+        campaign = store.get_social_campaign(draft.draft_id)
+        if campaign is None:
+            raise HTTPException(status_code=409, detail="Generate a social campaign first.")
+        try:
+            store.add_social_feedback(
+                content_item_id,
+                campaign.campaign_id,
+                SocialPlatform(platform),
+                PreferenceSignal(signal),
+                note,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/items/{quote(content_item_id, safe='')}?tab=delivery&channel=social",
+            status_code=303,
         )
 
     @app.get("/items/{content_item_id}/wordpress/preview", response_class=HTMLResponse)
@@ -976,7 +1232,8 @@ def create_app(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         if delivery.status.value == "draft_created":
             return RedirectResponse(
-                f"/items/{quote(content_item_id, safe='')}?tab=delivery", status_code=303
+                f"/items/{quote(content_item_id, safe='')}?tab=delivery&channel=wordpress",
+                status_code=303,
             )
         try:
             result = await publisher_factory().create_draft(draft)
@@ -999,7 +1256,8 @@ def create_app(
             result.editor_url,
         )
         return RedirectResponse(
-            f"/items/{quote(content_item_id, safe='')}?tab=delivery", status_code=303
+            f"/items/{quote(content_item_id, safe='')}?tab=delivery&channel=wordpress",
+            status_code=303,
         )
 
     @app.post("/discord/interactions")

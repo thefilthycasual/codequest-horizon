@@ -17,6 +17,10 @@ from .models import (
     EditorialPacket,
     PreferenceScope,
     PreferenceSignal,
+    SocialCampaign,
+    SocialPlatform,
+    SocialPostDraft,
+    SocialPostStatus,
     WordPressDelivery,
     WordPressDeliveryStatus,
 )
@@ -44,6 +48,7 @@ FEEDBACK_DIMENSIONS = (
 
 FEEDBACK_SIGNALS = tuple(signal.value for signal in PreferenceSignal)
 FEEDBACK_SCOPES = tuple(scope.value for scope in PreferenceScope)
+SOCIAL_PREFERENCE_LIMIT_PER_PLATFORM = 12
 
 
 def _now() -> str:
@@ -181,6 +186,66 @@ class EditorialStore:
                         ON DELETE CASCADE,
                     FOREIGN KEY (draft_id)
                         REFERENCES editorial_drafts(draft_id)
+                        ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS social_campaigns (
+                    campaign_id TEXT PRIMARY KEY,
+                    content_item_id TEXT NOT NULL,
+                    article_draft_id TEXT NOT NULL UNIQUE,
+                    campaign_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (content_item_id)
+                        REFERENCES editorial_items(content_item_id)
+                        ON DELETE CASCADE,
+                    FOREIGN KEY (article_draft_id)
+                        REFERENCES editorial_drafts(draft_id)
+                        ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS social_post_drafts (
+                    post_id TEXT PRIMARY KEY,
+                    campaign_id TEXT NOT NULL,
+                    content_item_id TEXT NOT NULL,
+                    article_draft_id TEXT NOT NULL,
+                    platform TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    post_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE (campaign_id, platform, version),
+                    FOREIGN KEY (campaign_id)
+                        REFERENCES social_campaigns(campaign_id)
+                        ON DELETE CASCADE,
+                    FOREIGN KEY (content_item_id)
+                        REFERENCES editorial_items(content_item_id)
+                        ON DELETE CASCADE,
+                    FOREIGN KEY (article_draft_id)
+                        REFERENCES editorial_drafts(draft_id)
+                        ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS social_feedback (
+                    feedback_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    content_item_id TEXT NOT NULL,
+                    campaign_id TEXT NOT NULL,
+                    platform TEXT NOT NULL,
+                    signal TEXT NOT NULL,
+                    note TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (content_item_id)
+                        REFERENCES editorial_items(content_item_id)
+                        ON DELETE CASCADE,
+                    FOREIGN KEY (campaign_id)
+                        REFERENCES social_campaigns(campaign_id)
                         ON DELETE CASCADE
                 )
                 """
@@ -354,6 +419,220 @@ class EditorialStore:
                 (content_item_id,),
             ).fetchall()
         return [ArticleDraft.model_validate_json(row["draft_json"]) for row in rows]
+
+    def create_social_campaign(
+        self, campaign: SocialCampaign, posts: list[SocialPostDraft]
+    ) -> SocialCampaign:
+        """Persist one complete campaign for the exact latest approved article."""
+
+        record = self.get_item(campaign.content_item_id)
+        draft = self.get_latest_draft(campaign.content_item_id)
+        decision = self.get_latest_decision(campaign.content_item_id)
+        if record is None:
+            raise KeyError(campaign.content_item_id)
+        if (
+            draft is None
+            or draft.draft_id != campaign.article_draft_id
+            or record.status != "approved"
+            or decision is None
+            or decision.draft_id != draft.draft_id
+            or decision.outcome != DecisionOutcome.APPROVED
+        ):
+            raise ValueError("Social campaigns require the exact latest approved article.")
+        if self.get_social_campaign(campaign.article_draft_id):
+            raise ValueError("A social campaign already exists for this article version.")
+        if {post.platform for post in posts} != set(SocialPlatform) or len(posts) != 3:
+            raise ValueError("A campaign requires one draft for each social platform.")
+        for post in posts:
+            if (
+                post.campaign_id != campaign.campaign_id
+                or post.content_item_id != campaign.content_item_id
+                or post.article_draft_id != campaign.article_draft_id
+                or post.version != 1
+                or post.parent_post_id is not None
+            ):
+                raise ValueError("Social draft does not belong to this campaign.")
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO social_campaigns "
+                "(campaign_id, content_item_id, article_draft_id, campaign_json, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    campaign.campaign_id,
+                    campaign.content_item_id,
+                    campaign.article_draft_id,
+                    campaign.model_dump_json(),
+                    campaign.created_at.isoformat(),
+                ),
+            )
+            connection.executemany(
+                "INSERT INTO social_post_drafts "
+                "(post_id, campaign_id, content_item_id, article_draft_id, platform, "
+                "version, post_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        post.post_id,
+                        post.campaign_id,
+                        post.content_item_id,
+                        post.article_draft_id,
+                        post.platform.value,
+                        post.version,
+                        post.model_dump_json(),
+                        post.created_at.isoformat(),
+                    )
+                    for post in posts
+                ],
+            )
+        return campaign
+
+    def get_social_campaign(self, article_draft_id: str) -> SocialCampaign | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT campaign_json FROM social_campaigns WHERE article_draft_id = ?",
+                (article_draft_id,),
+            ).fetchone()
+        return SocialCampaign.model_validate_json(row["campaign_json"]) if row else None
+
+    def list_latest_social_posts(self, campaign_id: str) -> list[SocialPostDraft]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT post_json FROM social_post_drafts posts "
+                "WHERE campaign_id = ? AND version = ("
+                "SELECT MAX(version) FROM social_post_drafts latest "
+                "WHERE latest.campaign_id = posts.campaign_id "
+                "AND latest.platform = posts.platform) ORDER BY platform",
+                (campaign_id,),
+            ).fetchall()
+        return [SocialPostDraft.model_validate_json(row["post_json"]) for row in rows]
+
+    def list_social_post_versions(
+        self, campaign_id: str, platform: SocialPlatform
+    ) -> list[SocialPostDraft]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT post_json FROM social_post_drafts "
+                "WHERE campaign_id = ? AND platform = ? ORDER BY version DESC",
+                (campaign_id, platform.value),
+            ).fetchall()
+        return [SocialPostDraft.model_validate_json(row["post_json"]) for row in rows]
+
+    def save_edited_social_post(
+        self, post: SocialPostDraft, parent_post_id: str
+    ) -> SocialPostDraft:
+        versions = self.list_social_post_versions(post.campaign_id, post.platform)
+        latest = versions[0] if versions else None
+        if latest is None or latest.post_id != parent_post_id:
+            raise ValueError(
+                "The social draft changed while it was being edited. Reload and try again."
+            )
+        if (
+            post.parent_post_id != parent_post_id
+            or post.version != latest.version + 1
+            or post.article_draft_id != latest.article_draft_id
+            or post.content_item_id != latest.content_item_id
+            or post.status != SocialPostStatus.DRAFT
+        ):
+            raise ValueError("Edited social draft lineage is invalid.")
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO social_post_drafts "
+                "(post_id, campaign_id, content_item_id, article_draft_id, platform, "
+                "version, post_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    post.post_id,
+                    post.campaign_id,
+                    post.content_item_id,
+                    post.article_draft_id,
+                    post.platform.value,
+                    post.version,
+                    post.model_dump_json(),
+                    post.created_at.isoformat(),
+                ),
+            )
+        return post
+
+    def set_social_post_status(
+        self, post_id: str, status: SocialPostStatus
+    ) -> SocialPostDraft:
+        post = self._get_social_post(post_id)
+        versions = self.list_social_post_versions(post.campaign_id, post.platform)
+        if not versions or versions[0].post_id != post_id:
+            raise ValueError("Only the latest social draft can receive a review decision.")
+        post.status = status
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE social_post_drafts SET post_json = ? WHERE post_id = ?",
+                (post.model_dump_json(), post_id),
+            )
+        if cursor.rowcount != 1:
+            raise KeyError(post_id)
+        return post
+
+    def add_social_feedback(
+        self,
+        content_item_id: str,
+        campaign_id: str,
+        platform: SocialPlatform,
+        signal: PreferenceSignal,
+        note: str,
+    ) -> None:
+        cleaned = note.strip()
+        if not cleaned:
+            raise ValueError("Social feedback must not be empty.")
+        campaign = self.get_social_campaign_for_id(campaign_id)
+        if campaign is None or campaign.content_item_id != content_item_id:
+            raise ValueError("Social campaign does not belong to this story.")
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO social_feedback "
+                "(content_item_id, campaign_id, platform, signal, note, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    content_item_id,
+                    campaign_id,
+                    platform.value,
+                    signal.value,
+                    cleaned,
+                    _now(),
+                ),
+            )
+
+    def list_social_preferences(self) -> dict[str, list[str]]:
+        """Return transparent, reusable feedback grouped by social platform."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT platform, signal, note FROM social_feedback "
+                "ORDER BY feedback_id DESC"
+            ).fetchall()
+        preferences = {platform.value: [] for platform in SocialPlatform}
+        for row in rows:
+            instruction = f"{str(row['signal']).title()}: {row['note']}"
+            platform_preferences = preferences[row["platform"]]
+            if (
+                instruction not in platform_preferences
+                and len(platform_preferences) < SOCIAL_PREFERENCE_LIMIT_PER_PLATFORM
+            ):
+                platform_preferences.append(instruction)
+        return preferences
+
+    def get_social_campaign_for_id(self, campaign_id: str) -> SocialCampaign | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT campaign_json FROM social_campaigns WHERE campaign_id = ?",
+                (campaign_id,),
+            ).fetchone()
+        return SocialCampaign.model_validate_json(row["campaign_json"]) if row else None
+
+    def _get_social_post(self, post_id: str) -> SocialPostDraft:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT post_json FROM social_post_drafts WHERE post_id = ?",
+                (post_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(post_id)
+        return SocialPostDraft.model_validate_json(row["post_json"])
 
     def record_decision(self, decision: DraftDecision) -> None:
         latest_draft = self.get_latest_draft(decision.content_item_id)
