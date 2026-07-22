@@ -186,6 +186,32 @@ def test_workspace_records_status_and_feedback(tmp_path) -> None:
     assert "Do not open with generic" in client.get("/preferences").text
 
 
+def test_editorial_queue_supports_filter_search_and_quick_selection(tmp_path) -> None:
+    db_path = tmp_path / "editorial.sqlite3"
+    packet = _packet()
+    EditorialStore(db_path).save_packet(packet)
+    client = TestClient(create_app(db_path))
+    item_id = packet.brief.content_item_id
+
+    queue = client.get("/editorial?status=candidate&q=developer")
+
+    assert queue.status_code == 200
+    assert "Candidates 1" in queue.text
+    assert "Select story" in queue.text
+    assert "Search stories" in queue.text
+
+    selected = client.post(
+        f"/items/{item_id}/status",
+        data={"status": "selected", "return_to": "editorial"},
+        follow_redirects=False,
+    )
+
+    assert selected.status_code == 303
+    assert selected.headers["location"] == "/editorial?status=selected"
+    assert "Open workspace" in client.get(selected.headers["location"]).text
+    assert "No matching stories" in client.get("/editorial?q=not-a-real-story").text
+
+
 def test_workspace_returns_empty_state_and_missing_item(tmp_path) -> None:
     client = TestClient(create_app(tmp_path / "editorial.sqlite3"))
 

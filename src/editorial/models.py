@@ -339,6 +339,9 @@ class AutomationRun(BaseModel):
     selected_count: int = 0
     drafted_count: int = 0
     skipped_count: int = 0
+    imported_item_ids: list[str] = Field(default_factory=list)
+    selected_item_ids: list[str] = Field(default_factory=list)
+    drafted_item_ids: list[str] = Field(default_factory=list)
     error_message: str = ""
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     finished_at: datetime | None = None

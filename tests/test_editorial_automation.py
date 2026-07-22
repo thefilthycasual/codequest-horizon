@@ -65,6 +65,8 @@ def test_automation_is_bounded_selects_top_story_and_records_duplicates(tmp_path
     assert first.discovered_count == 3
     assert first.imported_count == 2
     assert first.selected_count == 1
+    assert first.imported_item_ids == ["rss:automation:2", "rss:automation:3"]
+    assert first.selected_item_ids == ["rss:automation:2"]
     assert store.get_item("rss:automation:2").status == "selected"
     assert store.get_item("rss:automation:3").status == "candidate"
 
@@ -189,3 +191,6 @@ def test_operations_page_runs_injected_pipeline(tmp_path) -> None:
     assert response.status_code == 200
     assert "1 discovered" in response.text
     assert "1 imported" in response.text
+    assert "Manual workspace run" in response.text
+    assert "Automation story 1" in response.text
+    assert "Open editorial queue" in response.text

@@ -147,6 +147,7 @@ class EditorialAutomationRunner:
                 self.store.save_packet(build_editorial_packet(item))
                 imported.append((item.id, editorial_relevance(item)))
                 run.imported_count += 1
+                run.imported_item_ids.append(item.id)
 
             selected_ids = [
                 content_item_id
@@ -156,6 +157,7 @@ class EditorialAutomationRunner:
             for content_item_id in selected_ids:
                 self.store.set_status(content_item_id, "selected")
                 run.selected_count += 1
+                run.selected_item_ids.append(content_item_id)
 
             if self.config.auto_generate and selected_ids:
                 run.stage = "drafting"
@@ -174,6 +176,7 @@ class EditorialAutomationRunner:
                         draft = await generator.generate(record.packet, profile, [])
                         self.store.save_draft(draft)
                         run.drafted_count += 1
+                        run.drafted_item_ids.append(content_item_id)
                     except Exception as exc:  # preserve other candidates and record the partial run
                         draft_errors.append(f"{content_item_id}: {str(exc)[:240]}")
 

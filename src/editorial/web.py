@@ -162,10 +162,12 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 .social-head .badge.draft{padding:4px 9px;background:#f3f4f6}.social-meta{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:12px;margin:8px 0 14px}.inline-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.buffer-lock{border-style:dashed}
 .delivery-actions{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}.delivery-actions .text-link{display:inline-block;margin-bottom:10px}.delivery-state{margin-top:18px;padding:14px;border-radius:12px;background:#f8f9fa}.payload-copy{font-size:16px;white-space:pre-wrap;overflow-wrap:anywhere}.payload-table{display:grid;gap:8px}.payload-row{display:flex;justify-content:space-between;gap:20px;min-width:0;border-top:1px solid var(--line);padding-top:8px}.payload-row code{min-width:0;overflow-wrap:anywhere;word-break:break-all;text-align:right}.panel .text-link{overflow-wrap:anywhere}
 .run-list{display:grid;gap:10px}.run-row{display:grid;grid-template-columns:minmax(150px,.8fr) minmax(210px,1.4fr) auto;gap:18px;align-items:center;padding:15px 0;border-top:1px solid var(--line)}.run-row:first-child{border-top:0}.run-counts{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12px}.badge.completed{color:var(--success);background:#eefaf5;border-color:#cdebdc}.badge.running{color:#1d4ed8;background:#eff6ff;border-color:#bfdbfe}.badge.partial{color:var(--warning);background:#fff7ed;border-color:#fed7aa}.badge.failed{color:var(--danger);background:#fef2f2;border-color:#fecaca}
+.run-row{text-decoration:none;border-radius:10px;padding-left:10px;padding-right:10px}.run-row:hover,.run-row.active{background:#f7f7f8}.run-detail{margin:0 0 24px}.run-detail-head{display:flex;justify-content:space-between;gap:16px;align-items:start}.run-detail h2{margin-top:8px}.run-stories{display:grid;gap:8px;margin-top:16px}.run-story{padding:10px 12px;border:1px solid var(--line);border-radius:10px;text-decoration:none;font-weight:700}.run-story:hover{border-color:#f2c3a3}.queue-tools{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:14px}.queue-tools form{display:grid;grid-template-columns:1fr auto;gap:8px;width:min(100%,420px);justify-self:end}.queue-tools button{width:auto;padding-left:22px;padding-right:22px}.filter-tabs{display:flex;gap:7px;overflow:auto;padding-bottom:3px}.filter-tab{white-space:nowrap;text-decoration:none;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);font-weight:700}.filter-tab.active{background:var(--ink);border-color:var(--ink);color:#fff}.queue-list{display:grid}.queue-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,.25fr);gap:22px;padding:22px 4px;border-top:1px solid var(--line);align-items:center}.queue-row:first-child{border-top:0}.queue-row h2{margin:8px 0 6px}.queue-row h2 a{text-decoration:none}.queue-row h2 a:hover{color:#c75b17}.queue-row p{margin:0}.queue-summary{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.queue-side{text-align:right}.queue-side .meta{justify-content:flex-end;margin-top:0}.queue-side form{margin-top:10px}.queue-side .text-link{display:inline-block;margin-top:10px}.compact-button{padding:8px 14px;font-size:13px}
 @media(max-width:980px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:820px){.sidebar{position:static;width:auto;padding:12px}.workspace{padding-bottom:12px;margin-bottom:8px}.workspace small,.nav-label,.sidebar-foot{display:none}
 .side-nav{display:flex;overflow:auto}.nav-item{white-space:nowrap}.content{margin-left:0}.shell{padding:30px 18px 70px}.story-tabs{border-radius:10px}.story-tab{padding:8px 12px}}
-@media(max-width:560px){.run-row{grid-template-columns:1fr}.stat-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){.queue-tools{grid-template-columns:1fr}.queue-row{grid-template-columns:1fr}.queue-side{text-align:left}.queue-side .meta{justify-content:flex-start}.queue-side form{max-width:230px}}
+@media(max-width:560px){.run-row{grid-template-columns:1fr}.stat-grid{grid-template-columns:1fr 1fr}.queue-tools form{grid-template-columns:1fr}.queue-tools button{width:100%}}
 @media(max-width:480px){.nav-item{font-size:13px;padding:9px}.nav-icon{display:none}}
 """
 
@@ -285,6 +287,28 @@ def _decision_html(decision) -> str:
         + f"<small class='muted'>Decision for {escape(decision.draft_id)} · "
         f"{escape(decision.created_at.isoformat())}</small></div>"
     )
+
+
+def _display_time(value) -> str:
+    return value.strftime("%d %b %Y, %H:%M UTC")
+
+
+def _run_duration(run) -> str:
+    if run.finished_at is None:
+        return "In progress"
+    seconds = max(0, int((run.finished_at - run.started_at).total_seconds()))
+    if seconds < 60:
+        return f"{seconds} sec"
+    minutes, remainder = divmod(seconds, 60)
+    return f"{minutes} min {remainder} sec"
+
+
+def _trigger_label(trigger: str) -> str:
+    return {
+        "manual-cli": "Manual CLI",
+        "manual-workspace": "Manual workspace",
+        "schedule": "Scheduled",
+    }.get(trigger, trigger.replace("-", " ").replace("_", " ").title())
 
 
 def create_app(
@@ -407,27 +431,34 @@ def create_app(
         )
 
     @app.get("/operations", response_class=HTMLResponse)
-    def operations() -> HTMLResponse:
+    def operations(run: str = "") -> HTMLResponse:
         runs = store.list_automation_runs()
         latest = runs[0] if runs else None
+        selected_run = store.get_automation_run(run) if run else latest
+        if run and selected_run is None:
+            raise HTTPException(status_code=404, detail="Automation run not found")
         available = automation_runner_factory is not None or automation_settings.discovery_ready
         rows = []
-        for run in runs:
+        for history_run in runs:
             error = (
-                f"<p class='muted'>{escape(run.error_message)}</p>"
-                if run.error_message
+                f"<p class='muted'>{escape(history_run.error_message)}</p>"
+                if history_run.error_message
                 else ""
             )
-            finished = run.finished_at.isoformat() if run.finished_at else "In progress"
+            active_class = (
+                " active"
+                if selected_run and selected_run.run_id == history_run.run_id
+                else ""
+            )
             rows.append(
-                "<article class='run-row'><div>"
-                f"<span class='badge {escape(run.status.value)}'>{escape(run.status.value)}</span>"
-                f"<p><strong>{escape(run.stage.replace('_', ' '))}</strong></p></div>"
+                f"<a class='run-row{active_class}' href='/operations?run={quote(history_run.run_id, safe='')}'><div>"
+                f"<span class='badge {escape(history_run.status.value)}'>{escape(history_run.status.value)}</span>"
+                f"<p><strong>{escape(history_run.stage.replace('_', ' '))}</strong></p></div>"
                 "<div>"
-                f"<div class='run-counts'><span>{run.discovered_count} discovered</span>"
-                f"<span>{run.imported_count} imported</span><span>{run.selected_count} selected</span>"
-                f"<span>{run.drafted_count} drafted</span><span>{run.skipped_count} already known</span></div>"
-                f"{error}</div><small class='muted'>{escape(finished)}</small></article>"
+                f"<div class='run-counts'><span>{history_run.discovered_count} discovered</span>"
+                f"<span>{history_run.imported_count} imported</span><span>{history_run.selected_count} selected</span>"
+                f"<span>{history_run.drafted_count} drafted</span><span>{history_run.skipped_count} already known</span></div>"
+                f"{error}</div><small class='muted'>{escape(_display_time(history_run.started_at))}</small></a>"
             )
         run_history = "".join(rows) or (
             "<div class='empty'><h2>No runs yet</h2>"
@@ -443,6 +474,45 @@ def create_app(
             if available
             else "Create data/config.json from the CodeQuest example before running discovery."
         )
+        if selected_run:
+            trigger_label = _trigger_label(selected_run.trigger)
+            story_link_parts = []
+            for item_id in selected_run.imported_item_ids:
+                item_record = store.get_item(item_id)
+                label = (
+                    item_record.packet.brief.working_title if item_record else item_id
+                )
+                story_link_parts.append(
+                    f"<a class='run-story' href='/items/{quote(item_id, safe='')}'>"
+                    f"{escape(label)}</a>"
+                )
+            story_links = "".join(story_link_parts)
+            if not story_links and selected_run.imported_count:
+                story_links = (
+                    "<p class='muted'>This earlier run recorded its totals before item-level links were available.</p>"
+                )
+            run_detail = (
+                "<section class='panel run-detail'><div class='run-detail-head'><div>"
+                f"<span class='badge {escape(selected_run.status.value)}'>{escape(selected_run.status.value)}</span>"
+                f"<h2>{escape(trigger_label)} run</h2>"
+                f"<p class='muted'>Started {_display_time(selected_run.started_at)} · {_run_duration(selected_run)}</p>"
+                "</div><a class='text-link' href='/editorial'>Open editorial queue →</a></div>"
+                "<div class='run-counts'>"
+                f"<span><strong>{selected_run.discovered_count}</strong> discovered</span>"
+                f"<span><strong>{selected_run.imported_count}</strong> imported</span>"
+                f"<span><strong>{selected_run.selected_count}</strong> selected</span>"
+                f"<span><strong>{selected_run.drafted_count}</strong> drafted</span>"
+                f"<span><strong>{selected_run.skipped_count}</strong> already known</span></div>"
+                + (
+                    f"<p class='muted'>{escape(selected_run.error_message)}</p>"
+                    if selected_run.error_message
+                    else ""
+                )
+                + (f"<div class='run-stories'>{story_links}</div>" if story_links else "")
+                + "</section>"
+            )
+        else:
+            run_detail = ""
         return _page(
             "Operations",
             "<header class='page-head'><p class='eyebrow'>OPERATIONS</p>"
@@ -462,7 +532,8 @@ def create_app(
             f"<h2>{automation_settings.lookback_hours}-hour lookback</h2>"
             f"<p class='muted'>Imports at most {automation_settings.max_candidates} candidates and automatically selects at most {automation_settings.auto_select_count}.</p>"
             "<p class='muted'>Scheduling and model-backed drafting remain opt-in environment settings.</p>"
-            "</article></section><div class='section-head'><h2>Run history</h2></div>"
+            f"</article></section>{run_detail}<div class='section-head'><h2>Run history</h2>"
+            "<span class='muted'>Select a run to inspect it</span></div>"
             f"<section class='panel run-list'>{run_history}</section>",
             active="operations",
         )
@@ -483,9 +554,9 @@ def create_app(
         )
 
     @app.get("/editorial", response_class=HTMLResponse)
-    def inbox() -> HTMLResponse:
-        records = store.list_items()
-        if not records:
+    def inbox(status: str = "all", q: str = "") -> HTMLResponse:
+        all_records = store.list_items()
+        if not all_records:
             return _page(
                 "Editorial queue",
                 "<section class='empty panel'><p class='eyebrow'>EDITORIAL INBOX</p>"
@@ -493,23 +564,97 @@ def create_app(
                 "with the codequest-workspace command.</p></section>",
                 active="editorial",
             )
-        cards = []
+        if status != "all" and status not in EDITORIAL_STATUSES:
+            raise HTTPException(status_code=404, detail="Editorial filter not found")
+        search = q.strip()
+        records = [
+            record
+            for record in all_records
+            if (status == "all" or record.status == status)
+            and (
+                not search
+                or search.casefold()
+                in " ".join(
+                    [
+                        record.packet.brief.working_title,
+                        record.packet.brief.central_angle,
+                        record.packet.brief.article_type.value,
+                        record.status,
+                    ]
+                ).casefold()
+            )
+        ]
+        counts = {
+            candidate_status: sum(
+                record.status == candidate_status for record in all_records
+            )
+            for candidate_status in EDITORIAL_STATUSES
+        }
+        filter_labels = {
+            "all": "All",
+            "candidate": "Candidates",
+            "selected": "Selected",
+            "needs_revision": "Revisions",
+            "ready_for_approval": "Ready",
+            "approved": "Approved",
+            "archived": "Archived",
+        }
+        filter_tabs = "".join(
+            f"<a class='filter-tab{' active' if key == status else ''}' "
+            f"href='/editorial?status={key}{f'&q={quote(search)}' if search else ''}'>"
+            f"{label} {len(all_records) if key == 'all' else counts[key]}</a>"
+            for key, label in filter_labels.items()
+        )
+        rows = []
+        next_labels = {
+            "selected": ("Open workspace", "overview"),
+            "needs_revision": ("Review revision", "review"),
+            "ready_for_approval": ("Make decision", "review"),
+            "approved": ("Open delivery", "delivery"),
+            "archived": ("View story", "overview"),
+        }
         for record in records:
             brief = record.packet.brief
             href = f"/items/{quote(brief.content_item_id, safe='')}"
-            cards.append(
-                f"<a class='card' href='{href}'><span class='badge {escape(record.status)}'>{escape(record.status)}</span>"
-                f"<h2>{escape(brief.working_title)}</h2>"
-                f"<p class='muted'>{escape(brief.central_angle)}</p>"
-                f"<div class='meta'><span>{escape(brief.article_type.value.replace('_', ' '))}</span>"
-                f"<span>·</span><span>{len(record.packet.evidence.sources)} source(s)</span></div></a>"
+            draft_count = len(store.list_drafts(brief.content_item_id))
+            if record.status == "candidate":
+                action = (
+                    f"<form method='post' action='{href}/status'>"
+                    "<input type='hidden' name='status' value='selected'>"
+                    "<input type='hidden' name='return_to' value='editorial'>"
+                    "<button class='compact-button' type='submit'>Select story</button></form>"
+                )
+            else:
+                action_label, action_tab = next_labels[record.status]
+                action = (
+                    f"<a class='text-link' href='{href}?tab={action_tab}'>{action_label} →</a>"
+                )
+            rows.append(
+                "<article class='queue-row'><div>"
+                f"<span class='badge {escape(record.status)}'>{escape(record.status.replace('_', ' '))}</span>"
+                f"<h2><a href='{href}'>{escape(brief.working_title)}</a></h2>"
+                f"<p class='muted queue-summary'>{escape(brief.central_angle)}</p></div>"
+                "<aside class='queue-side'><div class='meta'>"
+                f"<span>{escape(brief.article_type.value.replace('_', ' '))}</span>"
+                f"<span>·</span><span>{len(record.packet.evidence.sources)} sources</span>"
+                f"<span>·</span><span>{draft_count} drafts</span></div>"
+                f"<small class='muted'>Updated {escape(record.updated_at[:10])}</small>{action}</aside></article>"
             )
+        queue_content = "".join(rows) or (
+            "<div class='empty'><h2>No matching stories</h2>"
+            "<p class='muted'>Try another status or clear the search.</p></div>"
+        )
         return _page(
             "Editorial queue",
             "<header class='page-head'><p class='eyebrow'>EDITORIAL INBOX</p>"
             "<h1>Find the signal. Shape the <span class='accent'>story.</span></h1>"
-            "<p class='muted'>Review the angle, evidence, and editorial memory before drafting.</p></header>"
-            f"<section class='grid'>{''.join(cards)}</section>",
+            "<p class='muted'>Prioritize candidates, move work forward, and find any story quickly.</p></header>"
+            "<section class='queue-tools'><nav class='filter-tabs' aria-label='Editorial status filters'>"
+            f"{filter_tabs}</nav><form method='get' action='/editorial'>"
+            f"<input type='hidden' name='status' value='{escape(status, quote=True)}'>"
+            f"<input type='search' name='q' value='{escape(search, quote=True)}' placeholder='Search stories'>"
+            "<button type='submit'>Search</button></form></section>"
+            f"<section class='panel queue-list'>{queue_content}</section>",
             active="editorial",
         )
 
@@ -1283,16 +1428,23 @@ def create_app(
         )
 
     @app.post("/items/{content_item_id}/status")
-    def update_status(content_item_id: str, status: str = Form()) -> RedirectResponse:
+    def update_status(
+        content_item_id: str,
+        status: str = Form(),
+        return_to: str = Form(""),
+    ) -> RedirectResponse:
         try:
             store.set_status(content_item_id, status)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Editorial item not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return RedirectResponse(
-            f"/items/{quote(content_item_id, safe='')}?tab=review", status_code=303
+        destination = (
+            "/editorial?status=selected"
+            if return_to == "editorial"
+            else f"/items/{quote(content_item_id, safe='')}?tab=review"
         )
+        return RedirectResponse(destination, status_code=303)
 
     @app.post("/items/{content_item_id}/draft")
     async def generate_draft(content_item_id: str) -> RedirectResponse:
