@@ -50,12 +50,15 @@ class ImageGenerationConfig:
 
     @property
     def ready(self) -> bool:
+        parsed = urlsplit(self.base_url)
         return bool(
             self.enabled
             and self.provider == "openai"
             and self.model
             and self.api_key
-            and self.base_url
+            and parsed.scheme == "https"
+            and parsed.hostname
+            and parsed.hostname not in {"localhost", "127.0.0.1"}
         )
 
     @property
@@ -68,7 +71,15 @@ class ImageGenerationConfig:
             return "Add an OpenAI API key to enable image generation."
         if not self.model:
             return "Choose an image model before generating."
-        return f"Ready · {self.provider.title()} · {self.model}"
+        parsed = urlsplit(self.base_url)
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.hostname in {"localhost", "127.0.0.1"}
+        ):
+            return "Use a secure HTTPS image-provider endpoint."
+        provider_label = "OpenAI" if self.provider == "openai" else self.provider.title()
+        return f"Ready · {provider_label} · {self.model}"
 
 
 @dataclass(frozen=True)

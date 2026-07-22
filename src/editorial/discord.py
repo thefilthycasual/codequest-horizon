@@ -123,6 +123,24 @@ class DiscordApprovalBridge:
         self.config = config
         self._client = client
 
+    async def test_connection(self) -> str:
+        """Read the bot identity without sending or changing any Discord message."""
+
+        headers = {"Authorization": f"Bot {self.config.bot_token}"}
+        if self._client is not None:
+            response = await self._client.get(
+                f"{DISCORD_API_BASE}/users/@me", headers=headers
+            )
+        else:
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.get(
+                    f"{DISCORD_API_BASE}/users/@me", headers=headers
+                )
+        response.raise_for_status()
+        payload = response.json()
+        username = str(payload.get("username") or "Discord bot")
+        return username[:80]
+
     async def send_request(
         self,
         request: DiscordApprovalRequest,

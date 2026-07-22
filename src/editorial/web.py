@@ -50,6 +50,7 @@ from .image_generation import (
     build_featured_image_prompt,
     create_configured_image_generator,
 )
+from .integrations import IntegrationState, integration_inventory
 from .models import (
     ArticleDraft,
     ArticleType,
@@ -184,10 +185,12 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 .brain-tabs{display:flex;gap:6px;padding:6px;background:#eceef1;border-radius:13px;margin-bottom:24px;overflow:auto}.brain-tab{white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.brain-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}.profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}.profile-grid .span-2{grid-column:1/-1}.profile-grid textarea{min-height:86px}.brain-rule-list{display:grid;gap:14px}.brain-rule{border:1px solid var(--line);border-radius:14px;padding:17px;background:#fff}.brain-rule.disabled{opacity:.62}.brain-rule-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}.brain-rule form{display:grid;grid-template-columns:150px 150px 100px;gap:10px}.brain-rule form .rule-instruction{grid-column:1/-1}.brain-rule form .rule-enabled{display:flex;align-items:center;gap:8px}.brain-rule form .rule-enabled input{width:auto}.brain-rule form button{grid-column:1/-1}.memory-preview{max-height:430px;overflow:auto}.learning-signal{padding:17px 0;border-top:1px solid var(--line)}.learning-signal:first-of-type{border-top:0}.learning-signal p{margin:8px 0}.promote-form{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px}.promote-form button{width:auto}.coverage-list{display:grid;gap:9px}.coverage-row{display:flex;justify-content:space-between;gap:12px;padding-top:9px;border-top:1px solid var(--line)}
 .radar-tools{display:grid;grid-template-columns:minmax(220px,1fr) 180px 150px 170px auto;gap:10px;margin-bottom:20px}.radar-tools button{width:auto;padding-left:22px;padding-right:22px}.radar-list{display:grid;gap:12px}.radar-row{display:grid;grid-template-columns:86px minmax(0,1fr) 190px;gap:20px;align-items:center}.score-box{display:grid;place-items:center;align-content:center;min-height:82px;border-radius:15px;background:var(--ink);color:#fff}.score-box strong{font-size:27px;line-height:1}.score-box small{font-size:10px;line-height:1.25;text-align:center;text-transform:uppercase;letter-spacing:.05em;opacity:.68}.score-box.pending{background:#f0f1f3;color:var(--muted)}.radar-copy h2{margin:6px 0}.radar-copy h2 a{text-decoration:none}.radar-copy h2 a:hover{color:var(--accent)}.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.tag{padding:3px 8px;border-radius:999px;background:var(--accent-soft);color:#b85618;font-size:11px;font-weight:750}.radar-side{text-align:right}.radar-side .meta{justify-content:flex-end}.intelligence-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.signal-card{padding:17px;border:1px solid var(--line);border-radius:14px;background:#fafafa}.signal-card small,.signal-card strong{display:block}.signal-card strong{font-size:18px;margin-top:3px}.insight-copy{white-space:pre-wrap}.engagement-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.engagement-item{padding:10px 12px;border-radius:10px;background:#f7f7f8}.engagement-item strong,.engagement-item small{display:block}
 .source-tabs{display:flex;gap:6px;padding:6px;background:#eceef1;border-radius:13px;margin-bottom:24px}.source-tab{padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.source-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}.source-list{display:grid;gap:14px}.source-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:start}.source-card form{grid-column:1/-1;display:grid;grid-template-columns:1.1fr 1.8fr 1fr auto;gap:10px}.source-card form button{grid-column:1/-1}.toggle-field{display:flex;align-items:center;gap:8px;padding:10px}.toggle-field input{width:auto}.source-state{display:inline-block;width:10px;height:10px;border-radius:50%;background:#b8bdc5;margin:0 8px 1px 0}.source-state.on{background:var(--success);box-shadow:0 0 0 4px #e8f8f1}.topic-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.topic-form .span-2,.topic-form button{grid-column:1/-1}.topic-form textarea{min-height:92px}.group-card form{display:grid;grid-template-columns:1fr 1fr 110px;gap:10px}.group-card form .group-categories,.group-card form button{grid-column:1/-1}.config-note{padding:13px 16px;border:1px solid #cdebdc;border-radius:12px;background:#eefaf5;color:var(--success);margin-bottom:18px}
+.config-error{padding:13px 16px;border:1px solid #fecaca;border-radius:12px;background:#fef2f2;color:var(--danger);margin-bottom:18px}
 .category-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.category-option{display:grid;grid-template-columns:auto 1fr;gap:9px;align-items:start;padding:11px;border:1px solid var(--line);border-radius:11px;background:#fafafa}.category-option input{width:auto;margin-top:4px}.category-option small,.category-option strong{display:block}.publishing-list{display:grid}.publishing-row{display:grid;grid-template-columns:minmax(0,1fr) 220px auto;gap:18px;align-items:center;padding:17px 0;border-top:1px solid var(--line)}.publishing-row:first-child{border-top:0}.publishing-row h3{margin:4px 0}.taxonomy-list{display:flex;gap:7px;flex-wrap:wrap}.taxonomy-item{padding:7px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:12px}.connection-card{border-color:#cdebdc;background:#f8fffb}
 .media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}.media-card{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}.media-card img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover;background:#eceef1}.media-card-copy{padding:12px}.media-card-copy strong,.media-card-copy small{display:block;overflow-wrap:anywhere}.media-choice{position:relative;padding:0;overflow:hidden}.media-choice input{position:absolute;top:10px;left:10px;width:18px;height:18px;z-index:2}.media-choice img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover}.media-choice span{display:block;padding:10px}.upload-panel input[type=file]{background:#fff}.publishing-tabs{display:flex;gap:6px;padding:6px;background:#eceef1;border-radius:13px;margin-bottom:24px}.publishing-tab{padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.publishing-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}
 .media-search{display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:18px}.media-search button{width:auto}.media-grid+.filter-tabs{margin-top:20px}
 .image-studio{border-color:#ffd2b6;background:linear-gradient(145deg,#fff 0%,#fff8f3 100%)}.image-candidates{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.image-candidate{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}.image-candidate img{display:block;width:100%;aspect-ratio:3/2;object-fit:cover;background:#eceef1}.image-candidate-copy{padding:13px}.image-candidate-copy p{margin:6px 0}.image-controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}.image-controls .span-2,.image-controls button{grid-column:1/-1}.cost-note{padding:10px 12px;border-radius:10px;background:#fff7ed;color:#9a5514;font-size:12px}
+.integration-tabs{display:flex;gap:6px;padding:6px;background:#eceef1;border-radius:13px;margin-bottom:24px}.integration-tab{padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.integration-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}.integration-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.integration-card{display:flex;flex-direction:column;gap:12px}.integration-card h2,.integration-card p{margin:0}.integration-card-head{display:flex;justify-content:space-between;gap:14px;align-items:start}.integration-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.integration-detail{padding:10px;border-radius:10px;background:#f7f7f8;font-size:12px}.integration-card details{border-top:1px solid var(--line);padding-top:10px}.integration-card summary{cursor:pointer;font-weight:700;color:var(--muted)}.integration-card form{margin-top:auto}.badge.guarded{color:var(--warning);background:#fff7ed;border-color:#fed7aa}.badge.live{color:#b45309;background:#fffbeb;border-color:#fcd34d}.badge.off{color:#68707d;background:#f3f4f6}.badge.needs_setup{color:var(--danger);background:#fef2f2;border-color:#fecaca}.security-principles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.security-principle{padding:18px;border:1px solid var(--line);border-radius:14px;background:#fafafa}.security-principle h3{margin-top:0}
 @media(max-width:980px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:820px){.sidebar{position:static;width:auto;padding:12px}.workspace{padding-bottom:12px;margin-bottom:8px}.workspace small,.nav-label,.sidebar-foot{display:none}
 .side-nav{display:flex;overflow:auto}.nav-item{white-space:nowrap}.content{margin-left:0}.shell{padding:30px 18px 70px}.story-tabs{border-radius:10px}.story-tab{padding:8px 12px}}
@@ -199,6 +202,7 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 @media(max-width:760px){.publishing-row{grid-template-columns:1fr}.category-grid{grid-template-columns:1fr}}
 @media(max-width:560px){.media-search{grid-template-columns:1fr}.media-search button{width:100%}}
 @media(max-width:620px){.image-controls{grid-template-columns:1fr}.image-controls .span-2,.image-controls button{grid-column:1}}
+@media(max-width:800px){.integration-grid,.security-principles{grid-template-columns:1fr}.integration-details{grid-template-columns:1fr}}
 @media(max-width:560px){.run-row{grid-template-columns:1fr}.stat-grid{grid-template-columns:1fr 1fr}.queue-tools form{grid-template-columns:1fr}.queue-tools button{width:100%}}
 @media(max-width:480px){.nav-item{font-size:13px;padding:9px}.nav-icon{display:none}}
 """
@@ -210,6 +214,7 @@ _ICONS = {
     "editorial": "<svg viewBox='0 0 24 24'><path d='M4 5h16v14H4z'/><path d='M8 9h8M8 13h8M8 17h5'/></svg>",
     "drafts": "<svg viewBox='0 0 24 24'><path d='M6 3h9l4 4v14H6z'/><path d='M14 3v5h5M9 12h6M9 16h6'/></svg>",
     "publishing": "<svg viewBox='0 0 24 24'><path d='M5 4h14v16H5z'/><path d='M8 8h8M8 12h8M8 16h5'/><path d='m14 4 5 5'/></svg>",
+    "integrations": "<svg viewBox='0 0 24 24'><path d='M8 12h8M12 8v8'/><path d='M7 4h10v4a4 4 0 0 1 0 8v4H7v-4a4 4 0 0 1 0-8z'/></svg>",
     "memory": "<svg viewBox='0 0 24 24'><path d='M12 3a4 4 0 0 0-4 4v1a4 4 0 0 0 0 8v1a4 4 0 0 0 4 4'/><path d='M12 3a4 4 0 0 1 4 4v1a4 4 0 0 1 0 8v1a4 4 0 0 1-4 4M12 3v18'/></svg>",
     "operations": "<svg viewBox='0 0 24 24'><path d='M4 7h10M4 17h16M18 7h2M4 12h3M11 12h9'/><circle cx='16' cy='7' r='2'/><circle cx='9' cy='12' r='2'/></svg>",
 }
@@ -235,6 +240,7 @@ def _page(title: str, body: str, active: str = "overview") -> HTMLResponse:
             _nav_item("editorial", "Editorial queue", "/editorial", active),
             _nav_item("drafts", "Draft library", "/drafts", active),
             _nav_item("publishing", "Publishing Hub", "/publishing", active),
+            _nav_item("integrations", "Integrations", "/integrations", active),
             _nav_item("memory", "Brand Brain", "/preferences", active),
             _nav_item("operations", "Operations", "/operations", active),
         )
@@ -378,9 +384,10 @@ def create_app(
         lambda: BufferPublisher(buffer_settings_factory())
     )
     automation_settings = AutomationConfig.from_env()
-    source_control = SourceControlService(
+    discovery_config_path = Path(
         source_config_path or automation_settings.discovery_config_path
     )
+    source_control = SourceControlService(discovery_config_path)
     automation_factory = automation_runner_factory or (
         lambda: create_automation_runner(db_path, automation_settings)
     )
@@ -976,6 +983,148 @@ def create_app(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return RedirectResponse(
             f"/operations?run={quote(run.run_id, safe='')}", status_code=303
+        )
+
+    @app.get("/integrations", response_class=HTMLResponse)
+    def integrations_center(
+        tab: str = "overview", notice: str = "", error: str = ""
+    ) -> HTMLResponse:
+        if tab not in {"overview", "security"}:
+            raise HTTPException(status_code=404, detail="Integration tab not found")
+        integrations = integration_inventory(
+            discovery_config_path=discovery_config_path
+        )
+        ready_count = sum(
+            item.state in {IntegrationState.READY, IntegrationState.GUARDED}
+            for item in integrations
+        )
+        live_count = sum(item.state == IntegrationState.LIVE for item in integrations)
+        setup_count = sum(
+            item.state == IntegrationState.NEEDS_SETUP for item in integrations
+        )
+        optional_off_count = sum(
+            item.state == IntegrationState.OFF for item in integrations
+        )
+        state_badges = {
+            IntegrationState.READY: "selected",
+            IntegrationState.GUARDED: "guarded",
+            IntegrationState.LIVE: "live",
+            IntegrationState.OFF: "off",
+            IntegrationState.NEEDS_SETUP: "needs_setup",
+        }
+        cards = []
+        for integration in integrations:
+            details = "".join(
+                f"<div class='integration-detail'>{escape(detail)}</div>"
+                for detail in integration.details
+            )
+            config_names = "".join(
+                f"<code>{escape(name)}</code>"
+                for name in integration.configuration_names
+            )
+            test_disabled = (
+                " disabled"
+                if integration.state
+                in {IntegrationState.OFF, IntegrationState.NEEDS_SETUP}
+                else ""
+            )
+            optional_note = " · optional" if integration.optional else ""
+            cards.append(
+                "<article class='panel integration-card'>"
+                "<div class='integration-card-head'><div>"
+                f"<p class='eyebrow'>{escape(integration.key.upper())}{optional_note}</p>"
+                f"<h2>{escape(integration.name)}</h2></div>"
+                f"<span class='badge {state_badges[integration.state]}'>{escape(integration.state_label)}</span></div>"
+                f"<p>{escape(integration.purpose)}</p>"
+                f"<p class='muted'>{escape(integration.summary)}</p>"
+                f"<div class='integration-details'>{details}</div>"
+                "<details><summary>Administrator configuration names</summary>"
+                f"<div class='tags'>{config_names}</div>"
+                "<p class='muted'>Values are read from protected runtime secrets and are never shown here.</p></details>"
+                f"<form method='post' action='/integrations/{integration.key}/test'>"
+                f"<button class='button-revise' type='submit'{test_disabled}>{escape(integration.test_label)}</button></form>"
+                "</article>"
+            )
+        tabs = (
+            "<nav class='integration-tabs' aria-label='Integration Center sections'>"
+            f"<a class='integration-tab{' active' if tab == 'overview' else ''}' href='/integrations?tab=overview'>Connections</a>"
+            f"<a class='integration-tab{' active' if tab == 'security' else ''}' href='/integrations?tab=security'>Secrets & tenancy</a></nav>"
+        )
+        feedback = (
+            f"<div class='config-note'>{escape(notice)}</div>" if notice else ""
+        ) + (f"<div class='config-error'>{escape(error)}</div>" if error else "")
+        overview_body = (
+            "<div class='section-head'><div><h2>Organisation connections</h2>"
+            "<p class='muted'>Configuration status only—credential values never enter the page.</p></div>"
+            "<span class='muted'>Tests are read-only or configuration-only</span></div>"
+            f"<section class='integration-grid'>{''.join(cards)}</section>"
+        )
+        security_body = (
+            "<div class='layout'><section class='panel'><p class='eyebrow'>SECRET BOUNDARY</p>"
+            "<h2>Credentials do not belong in editorial data</h2>"
+            "<p>The local workspace reads credentials from its protected runtime environment. It stores articles, decisions, preferences, and delivery receipts—but never API keys or passwords.</p>"
+            "<div class='security-principles'>"
+            "<article class='security-principle'><h3>Tenant isolation</h3><p class='muted'>Each organisation will receive separate secret references, provider connections, usage limits, and audit history.</p></article>"
+            "<article class='security-principle'><h3>Masked by design</h3><p class='muted'>The dashboard reports only whether a field exists. It does not return values, partial values, or fingerprints.</p></article>"
+            "<article class='security-principle'><h3>Explicit writes</h3><p class='muted'>Connection tests do not post content. WordPress, Buffer, Discord, and paid generation retain separate action boundaries.</p></article>"
+            "<article class='security-principle'><h3>Rotation ready</h3><p class='muted'>A future vault adapter can replace a credential without changing stored articles or integration records.</p></article>"
+            "</div></section><aside class='stack'><section class='panel'><p class='eyebrow'>EXISTING SOLUTIONS</p>"
+            "<h2>Use a vault when this becomes SaaS</h2>"
+            "<p class='muted'>Recommended starting point: Infisical for a SaaS-friendly operator experience. OpenBao is a strong infrastructure-led alternative. Neither is required for local development.</p>"
+            "<p><a class='text-link' href='https://github.com/Infisical/infisical' target='_blank' rel='noopener'>Review Infisical →</a></p>"
+            "<p><a class='text-link' href='https://github.com/openbao/openbao' target='_blank' rel='noopener'>Review OpenBao →</a></p>"
+            "</section><section class='panel'><h2>Current storage rule</h2>"
+            "<p class='muted'>Environment-managed secrets for this single organisation. No credential editing is offered until encrypted, tenant-scoped storage exists.</p>"
+            "</section></aside></div>"
+        )
+        return _page(
+            "Integrations",
+            "<header class='page-head'><p class='eyebrow'>INTEGRATIONS</p>"
+            "<h1>Every connection, with its <span class='accent'>safety state.</span></h1>"
+            "<p class='muted'>See what is ready, what can write externally, and what an administrator still needs to configure.</p></header>"
+            "<section class='stat-grid'>"
+            f"<article class='stat-card'><small>Ready or guarded</small><strong class='stat-value'>{ready_count}</strong><span class='muted'>safe to use</span></article>"
+            f"<article class='stat-card'><small>Live writes</small><strong class='stat-value'>{live_count}</strong><span class='muted'>explicit actions enabled</span></article>"
+            f"<article class='stat-card'><small>Needs setup</small><strong class='stat-value'>{setup_count}</strong><span class='muted'>administrator attention</span></article>"
+            f"<article class='stat-card'><small>Optional services off</small><strong class='stat-value'>{optional_off_count}</strong><span class='muted'>no workflow blocker</span></article></section>"
+            f"{feedback}{tabs}{overview_body if tab == 'overview' else security_body}",
+            active="integrations",
+        )
+
+    @app.post("/integrations/{integration_key}/test")
+    async def test_integration(integration_key: str) -> RedirectResponse:
+        allowed = {"horizon", "ollama", "wordpress", "images", "buffer", "discord"}
+        if integration_key not in allowed:
+            raise HTTPException(status_code=404, detail="Integration not found")
+        try:
+            if integration_key == "horizon":
+                source_control.load()
+                message = "Horizon source configuration is valid."
+            elif integration_key == "ollama":
+                writer_factory()
+                message = "Ollama Cloud writing configuration is valid."
+            elif integration_key == "wordpress":
+                categories = await publisher_factory().list_categories()
+                message = f"WordPress responded successfully with {len(categories)} categories."
+            elif integration_key == "images":
+                image_writer_factory()
+                message = "Image provider configuration is valid. No image was generated."
+            elif integration_key == "buffer":
+                buffer_settings_factory()
+                message = "Buffer configuration is complete. No post was created."
+            else:
+                bot_name = await bridge_factory().test_connection()
+                message = f"Discord bot {bot_name} responded successfully. No message was sent."
+        except Exception as exc:
+            safe_errors = (ValueError, ConfigError, DraftGenerationError, ImageGenerationError)
+            detail = str(exc) if isinstance(exc, safe_errors) else (
+                f"{integration_key.title()} did not respond successfully. Check its credentials and endpoint."
+            )
+            return RedirectResponse(
+                f"/integrations?error={quote(detail, safe='')}", status_code=303
+            )
+        return RedirectResponse(
+            f"/integrations?notice={quote(message, safe='')}", status_code=303
         )
 
     @app.get("/editorial", response_class=HTMLResponse)
