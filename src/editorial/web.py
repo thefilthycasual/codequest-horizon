@@ -15,6 +15,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
+from .auth import (
+    AuthConfig,
+    AuthPrincipal,
+    RequestAuthenticator,
+    create_request_authenticator,
+)
+
 from .automation import (
     AutomationConfig,
     EditorialAutomationRunner,
@@ -174,6 +181,7 @@ fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linej
 .sidebar-foot small{font-size:11px;color:var(--muted)}.content{margin-left:var(--sidebar);min-height:100vh}.shell{max-width:1320px;padding:42px 38px 80px}
 .stat-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:14px;margin-bottom:28px}.stat-card{background:#fff;border:1px solid var(--line);
 border-radius:14px;padding:20px}.stat-card small{color:var(--muted)}.stat-value{display:block;font-size:34px;font-weight:820;line-height:1.1;letter-spacing:-.04em;margin:7px 0}
+.access-value{display:block;font-size:20px;font-weight:780;line-height:1.2;margin:8px 0 5px}.role-table{width:100%;border-collapse:collapse}.role-table th,.role-table td{padding:12px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}.role-table th:first-child,.role-table td:first-child{width:110px}
 .section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:26px 0 14px}.text-link{color:#c75b17;font-weight:700;text-decoration:none}
 .discord-panel{border-color:#d9dcff;background:#fafaff}.discord-panel .discord-badge{background:#5865f2;color:#fff;border-color:#5865f2}
 .crumb{display:flex;gap:8px;color:var(--muted);font-size:12px;margin-bottom:18px}.crumb a{text-decoration:none}.crumb a:hover{color:var(--accent)}
@@ -227,6 +235,7 @@ _ICONS = {
     "integrations": "<svg viewBox='0 0 24 24'><path d='M8 12h8M12 8v8'/><path d='M7 4h10v4a4 4 0 0 1 0 8v4H7v-4a4 4 0 0 1 0-8z'/></svg>",
     "memory": "<svg viewBox='0 0 24 24'><path d='M12 3a4 4 0 0 0-4 4v1a4 4 0 0 0 0 8v1a4 4 0 0 0 4 4'/><path d='M12 3a4 4 0 0 1 4 4v1a4 4 0 0 1 0 8v1a4 4 0 0 1-4 4M12 3v18'/></svg>",
     "operations": "<svg viewBox='0 0 24 24'><path d='M4 7h10M4 17h16M18 7h2M4 12h3M11 12h9'/><circle cx='16' cy='7' r='2'/><circle cx='9' cy='12' r='2'/></svg>",
+    "access": "<svg viewBox='0 0 24 24'><circle cx='12' cy='8' r='4'/><path d='M4 21a8 8 0 0 1 16 0M18 11l2 2 3-3'/></svg>",
     "workspace_admin": "<svg viewBox='0 0 24 24'><path d='M4 20V6l8-3 8 3v14'/><path d='M8 9h2M14 9h2M8 13h2M14 13h2M9 20v-3h6v3'/></svg>",
 }
 
@@ -265,6 +274,7 @@ def _page(
             _nav_item("integrations", "Integrations", "/integrations", active),
             _nav_item("memory", "Brand Brain", "/preferences", active),
             _nav_item("operations", "Operations", "/operations", active),
+            _nav_item("access", "Access & roles", "/access", active),
             _nav_item("workspace_admin", "Workspace settings", "/workspace", active),
         )
     )
@@ -391,9 +401,33 @@ def create_app(
     image_generator_factory: Callable[[], ImageGenerator] | None = None,
     image_config_factory: Callable[[], ImageGenerationConfig] | None = None,
     generated_image_dir: str | Path | None = None,
+    auth_config: AuthConfig | None = None,
+    request_authenticator: RequestAuthenticator | None = None,
 ) -> FastAPI:
     app = FastAPI(title="CodeQuest Editorial Workspace")
     store = EditorialStore(db_path)
+    active_auth_config = auth_config or AuthConfig.from_env()
+    authenticator = request_authenticator or create_request_authenticator(
+        active_auth_config
+    )
+
+    @app.middleware("http")
+    async def attach_workspace_identity(request: Request, call_next):
+        principal = authenticator.authenticate(request)
+        request.state.principal = principal
+        if (
+            active_auth_config.clerk_selected
+            and active_auth_config.enforce
+            and not principal.authenticated
+            and request.url.path not in {"/health", "/api/auth/status"}
+        ):
+            accepts_html = "text/html" in request.headers.get("accept", "")
+            if accepts_html and active_auth_config.sign_in_url:
+                return RedirectResponse(active_auth_config.sign_in_url, status_code=303)
+            return JSONResponse(
+                {"detail": principal.reason or "Sign in is required."}, status_code=401
+            )
+        return await call_next(request)
     try:
         credential_vault = WorkspaceSecretVault.from_env()
         credential_vault_error = ""
@@ -650,6 +684,62 @@ def create_app(
             "<button class='button-revise' type='submit'>Add organisation</button></form>"
             "<div class='cost-note'>This phase isolates content and learning. User invitations, roles, billing, and per-organisation secret vaults come later.</div></aside></div>",
             active="workspace_admin",
+        )
+
+    @app.get("/api/auth/status")
+    def auth_status(request: Request) -> JSONResponse:
+        principal: AuthPrincipal = request.state.principal
+        return JSONResponse(
+            {
+                "provider": active_auth_config.provider,
+                "enforced": active_auth_config.enforce,
+                "configured": active_auth_config.clerk_ready,
+                "authenticated": principal.authenticated,
+                "role": principal.role.value,
+                "organization_selected": bool(principal.organization_id),
+            }
+        )
+
+    @app.get("/access", response_class=HTMLResponse)
+    def access_center(request: Request) -> HTMLResponse:
+        principal: AuthPrincipal = request.state.principal
+        clerk_state = (
+            "Ready for staged activation"
+            if active_auth_config.clerk_ready
+            else "Not configured"
+        )
+        mode_label = (
+            "Clerk"
+            if active_auth_config.clerk_selected
+            else "Local owner mode"
+        )
+        enforcement_label = "Protected" if active_auth_config.enforce else "Preview only"
+        role_rows = "".join(
+            (
+                "<tr><td><strong>Owner</strong></td><td>Full organisation, billing-ready, integrations, editorial and approval control</td></tr>",
+                "<tr><td><strong>Admin</strong></td><td>Manage workspace, brands, integrations and editorial work</td></tr>",
+                "<tr><td><strong>Editor</strong></td><td>Create, revise, approve and publish content within assigned brands</td></tr>",
+                "<tr><td><strong>Viewer</strong></td><td>Read dashboards, drafts and reports without making changes</td></tr>",
+            )
+        )
+        return render_page(
+            "Access & roles",
+            "<header class='page-head'><p class='eyebrow'>ACCESS & ROLES</p>"
+            "<h1>Prepare each organisation for <span class='accent'>managed access.</span></h1>"
+            "<p class='muted'>Clerk will handle sign-in and membership. CodeQuest keeps control of what each role may do inside a brand workspace.</p></header>"
+            "<section class='stat-grid'>"
+            f"<article class='stat-card'><small>Current mode</small><strong class='access-value'>{escape(mode_label)}</strong><span class='muted'>Identity source</span></article>"
+            f"<article class='stat-card'><small>Clerk readiness</small><strong class='access-value'>{escape(clerk_state)}</strong><span class='muted'>No keys are displayed</span></article>"
+            f"<article class='stat-card'><small>Enforcement</small><strong class='access-value'>{escape(enforcement_label)}</strong><span class='muted'>Safe staged rollout</span></article>"
+            f"<article class='stat-card'><small>Your role</small><strong class='access-value'>{escape(principal.role.value.title())}</strong><span class='muted'>{'Verified session' if principal.provider == 'clerk' and principal.authenticated else 'Development identity'}</span></article>"
+            "</section><div class='layout'><section class='panel'><p class='eyebrow'>ROLE MODEL</p><h2>Clear control without technical permissions</h2>"
+            f"<div class='table-wrap'><table class='role-table'><thead><tr><th>Role</th><th>What this person can do</th></tr></thead><tbody>{role_rows}</tbody></table></div>"
+            "</section><aside class='stack'><section class='panel'><p class='eyebrow'>ROLLOUT</p><h2>Three deliberate steps</h2>"
+            "<ol><li>Add Clerk keys and trusted website addresses.</li><li>Connect the future frontend sign-in and organisation switcher.</li><li>Turn on enforcement only after an owner account has been tested.</li></ol>"
+            "<p class='muted'>Until step three, local development keeps working and no team member can be accidentally locked out.</p></section>"
+            "<section class='panel'><h2>Already wired</h2><p class='muted'>Every request now has a standard identity context with user, organisation, session and role. The same boundary works for today’s FastAPI pages and a future React or Next.js frontend.</p>"
+            "<a class='text-link' href='/integrations'>Review Clerk configuration status →</a></section></aside></div>",
+            active="access",
         )
 
     @app.post("/workspace/organizations")
@@ -1590,11 +1680,15 @@ def create_app(
 
     @app.post("/integrations/{integration_key}/test")
     async def test_integration(integration_key: str) -> RedirectResponse:
-        allowed = {"horizon", "ollama", "wordpress", "images", "buffer", "discord"}
+        allowed = {"clerk", "horizon", "ollama", "wordpress", "images", "buffer", "discord"}
         if integration_key not in allowed:
             raise HTTPException(status_code=404, detail="Integration not found")
         try:
-            if integration_key == "horizon":
+            if integration_key == "clerk":
+                if not active_auth_config.clerk_ready:
+                    raise ValueError("Add the Clerk keys and at least one trusted website address first.")
+                message = "Clerk configuration is complete. Access enforcement was not changed."
+            elif integration_key == "horizon":
                 source_control.load()
                 message = "Horizon source configuration is valid."
             elif integration_key == "ollama":

@@ -493,6 +493,22 @@ wheels = [
 ]
 
 [[package]]
+name = "clerk-backend-api"
+version = "6.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "httpcore" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "pyjwt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7a/32/d36c81878090f4451df4d3cd6b831a92c7b7d42d81f32811a75fe786dfca/clerk_backend_api-6.0.1.tar.gz", hash = "sha256:27a52507ac9c82752e58b02a26daa7374d94268406ff40981872f8e4d2ca70bd", size = 276013, upload-time = "2026-06-12T16:00:02.694Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/62/b8/8ea910c05c3e8b37294267cfad863d626ba2fcc4462ecea1573885382814/clerk_backend_api-6.0.1-py3-none-any.whl", hash = "sha256:a76c006ec8082d2a0d903c131ecd195400635a4cf3834fe8683688a598296e84", size = 566645, upload-time = "2026-06-12T16:00:01.353Z" },
+]
+
+[[package]]
 name = "click"
 version = "8.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1100,6 +1116,7 @@ source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "beautifulsoup4" },
+    { name = "clerk-backend-api" },
     { name = "ddgs" },
     { name = "fastapi" },
     { name = "feedparser" },
@@ -1139,6 +1156,7 @@ twitter = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.39.0" },
     { name = "beautifulsoup4", specifier = ">=4.12.0" },
+    { name = "clerk-backend-api", specifier = ">=6.0.1" },
     { name = "ddgs", specifier = ">=7.0.0" },
     { name = "fastapi", specifier = ">=0.128.0" },
     { name = "feedparser", specifier = ">=6.0.11" },

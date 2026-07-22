@@ -32,6 +32,12 @@ INTEGRATION_ENV_NAMES = (
     "IMAGE_GENERATION_PROVIDER",
     "IMAGE_GENERATION_MODEL",
     "OPENAI_API_KEY",
+    "AUTH_PROVIDER",
+    "AUTH_ENFORCEMENT_ENABLED",
+    "CLERK_PUBLISHABLE_KEY",
+    "CLERK_SECRET_KEY",
+    "CLERK_JWT_KEY",
+    "CLERK_AUTHORIZED_PARTIES",
 )
 
 
@@ -61,6 +67,7 @@ def test_integration_inventory_reports_states_without_secret_values(
     assert statuses["images"].state == IntegrationState.OFF
     assert statuses["discord"].state == IntegrationState.OFF
     assert statuses["horizon"].state == IntegrationState.READY
+    assert statuses["clerk"].state == IntegrationState.OFF
     assert sentinel not in repr(inventory)
     assert "WORDPRESS_APP_PASSWORD" in statuses["wordpress"].configuration_names
 

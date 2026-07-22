@@ -129,6 +129,16 @@ def integration_inventory(
         else IntegrationState.NEEDS_SETUP
     )
     automation_enabled = _flag("AUTOMATION_ENABLED", default=False)
+    auth_provider = (_value("AUTH_PROVIDER") or "local").lower()
+    auth_enforced = _flag("AUTH_ENFORCEMENT_ENABLED", default=False)
+    clerk_values = (
+        _value("CLERK_PUBLISHABLE_KEY"),
+        _value("CLERK_JWT_KEY") or _value("CLERK_SECRET_KEY"),
+        _value("CLERK_AUTHORIZED_PARTIES"),
+    )
+    clerk_state = _configured_state(clerk_values, optional=True)
+    if auth_provider != "clerk":
+        clerk_state = IntegrationState.OFF
 
     state_labels = {
         IntegrationState.READY: "Ready",
@@ -139,6 +149,33 @@ def integration_inventory(
     }
 
     return [
+        IntegrationStatus(
+            key="clerk",
+            name="Clerk Access",
+            purpose="Manage sign-in, organisation membership, and workspace roles.",
+            state=clerk_state,
+            state_label=state_labels[clerk_state],
+            summary=(
+                "Clerk is ready to verify workspace sessions."
+                if clerk_state == IntegrationState.READY
+                else "Local owner mode is active; Clerk can be enabled when the SaaS frontend is ready."
+            ),
+            details=(
+                f"Identity provider: {'Clerk' if auth_provider == 'clerk' else 'Local development'}",
+                f"Access enforcement: {'on' if auth_enforced else 'off'}",
+                "Roles: owner, admin, editor, viewer",
+            ),
+            configuration_names=(
+                "AUTH_PROVIDER",
+                "AUTH_ENFORCEMENT_ENABLED",
+                "CLERK_PUBLISHABLE_KEY",
+                "CLERK_SECRET_KEY",
+                "CLERK_JWT_KEY",
+                "CLERK_AUTHORIZED_PARTIES",
+            ),
+            test_label="Review access readiness",
+            optional=True,
+        ),
         IntegrationStatus(
             key="horizon",
             name="Horizon Discovery",
