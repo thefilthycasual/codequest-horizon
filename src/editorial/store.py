@@ -36,6 +36,8 @@ from .models import (
     WordPressCategory,
     WordPressMediaItem,
     WordPressPublishingSettings,
+    VisualBrandProfile,
+    VisualPreferenceFeedback,
 )
 
 
@@ -198,6 +200,16 @@ class EditorialStore:
             )
             connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS visual_brand_profiles (
+                    brand_id TEXT PRIMARY KEY,
+                    profile_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (brand_id) REFERENCES brands(brand_id) ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS discord_approval_requests (
                     request_id TEXT PRIMARY KEY,
                     content_item_id TEXT NOT NULL,
@@ -333,6 +345,19 @@ class EditorialStore:
                     FOREIGN KEY (draft_id)
                         REFERENCES editorial_drafts(draft_id)
                         ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS visual_image_feedback (
+                    feedback_id TEXT PRIMARY KEY,
+                    brand_id TEXT NOT NULL,
+                    asset_id TEXT NOT NULL,
+                    feedback_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (brand_id) REFERENCES brands(brand_id) ON DELETE CASCADE,
+                    FOREIGN KEY (asset_id) REFERENCES generated_images(asset_id) ON DELETE CASCADE
                 )
                 """
             )
@@ -552,6 +577,85 @@ class EditorialStore:
                 ),
             )
         return asset
+
+    def get_visual_brand_profile(
+        self, brand_id: str = DEFAULT_BRAND_ID
+    ) -> VisualBrandProfile:
+        self.get_brand_profile(brand_id)
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT profile_json FROM visual_brand_profiles WHERE brand_id = ?",
+                (brand_id,),
+            ).fetchone()
+        return (
+            VisualBrandProfile.model_validate_json(row["profile_json"])
+            if row
+            else VisualBrandProfile(brand_id=brand_id)
+        )
+
+    def save_visual_brand_profile(
+        self, profile: VisualBrandProfile
+    ) -> VisualBrandProfile:
+        self.get_brand_profile(profile.brand_id)
+        known_media_ids = {item.media_id for item in self.list_wordpress_media()}
+        if set(profile.reference_media_ids) - known_media_ids:
+            raise ValueError(
+                "Refresh the WordPress media library before using this reference image."
+            )
+        profile.reference_media_ids = list(dict.fromkeys(profile.reference_media_ids))
+        profile.updated_at = datetime.now(timezone.utc)
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO visual_brand_profiles (brand_id, profile_json, updated_at) "
+                "VALUES (?, ?, ?) ON CONFLICT(brand_id) DO UPDATE SET "
+                "profile_json = excluded.profile_json, updated_at = excluded.updated_at",
+                (
+                    profile.brand_id,
+                    profile.model_dump_json(),
+                    profile.updated_at.isoformat(),
+                ),
+            )
+        return profile
+
+    def add_visual_feedback(
+        self, feedback: VisualPreferenceFeedback
+    ) -> VisualPreferenceFeedback:
+        asset = self.get_generated_image(feedback.asset_id)
+        if asset is None:
+            raise KeyError(feedback.asset_id)
+        record = self.get_item(asset.content_item_id)
+        if record is None or record.brand_id != feedback.brand_id:
+            raise ValueError("Image feedback must belong to the article's brand.")
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO visual_image_feedback "
+                "(feedback_id, brand_id, asset_id, feedback_json, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    feedback.feedback_id,
+                    feedback.brand_id,
+                    feedback.asset_id,
+                    feedback.model_dump_json(),
+                    feedback.created_at.isoformat(),
+                ),
+            )
+        return feedback
+
+    def list_visual_feedback(
+        self, brand_id: str = DEFAULT_BRAND_ID, asset_id: str | None = None
+    ) -> list[VisualPreferenceFeedback]:
+        query = "SELECT feedback_json FROM visual_image_feedback WHERE brand_id = ?"
+        params: list[str] = [brand_id]
+        if asset_id is not None:
+            query += " AND asset_id = ?"
+            params.append(asset_id)
+        query += " ORDER BY created_at DESC"
+        with self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [
+            VisualPreferenceFeedback.model_validate_json(row["feedback_json"])
+            for row in rows
+        ]
 
     def get_generated_image(self, asset_id: str) -> GeneratedImageAsset | None:
         with self._connect() as connection:

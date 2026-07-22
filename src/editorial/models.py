@@ -102,6 +102,54 @@ class BrandRule(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class VisualBrandProfile(BaseModel):
+    """Human-approved visual identity used by future image generations."""
+
+    brand_id: str
+    visual_summary: str = ""
+    primary_color: str = ""
+    accent_color: str = ""
+    background_color: str = ""
+    preferred_styles: list[str] = Field(default_factory=list)
+    avoided_styles: list[str] = Field(default_factory=list)
+    composition_rules: list[str] = Field(default_factory=list)
+    people_policy: str = "Only when people meaningfully support the story"
+    text_policy: str = "No readable text in generated images"
+    reference_media_ids: list[int] = Field(default_factory=list)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def prompt_context(self) -> str:
+        fields = [
+            ("Visual direction", self.visual_summary),
+            ("Primary colour", self.primary_color),
+            ("Accent colour", self.accent_color),
+            ("Background colour", self.background_color),
+            ("Preferred styles", ", ".join(self.preferred_styles)),
+            ("Avoided styles", ", ".join(self.avoided_styles)),
+            ("Composition rules", "; ".join(self.composition_rules)),
+            ("People", self.people_policy),
+            ("Text", self.text_policy),
+        ]
+        populated = [f"- {label}: {value}" for label, value in fields if value]
+        return (
+            "\n".join(populated)
+            if populated
+            else "No visual identity has been configured yet."
+        )
+
+
+class VisualPreferenceFeedback(BaseModel):
+    """Explicit editor feedback on one generated image candidate."""
+
+    feedback_id: str = Field(default_factory=lambda: f"visual_feedback_{uuid4().hex}")
+    brand_id: str
+    asset_id: str
+    signal: PreferenceSignal
+    dimension: str = Field(min_length=1)
+    note: str = Field(min_length=1)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class EvidenceSource(BaseModel):
     """One source and the material it contributes to an editorial brief."""
 
@@ -369,6 +417,10 @@ class GeneratedImageAsset(BaseModel):
     file_path: str = Field(min_length=1)
     alt_text: str = Field(min_length=1)
     wordpress_media_id: int | None = Field(default=None, ge=1)
+    visual_profile_snapshot: VisualBrandProfile | None = None
+    visual_feedback_snapshot: list[VisualPreferenceFeedback] = Field(
+        default_factory=list
+    )
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

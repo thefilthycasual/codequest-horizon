@@ -72,6 +72,8 @@ from .models import (
     SocialPostStatus,
     WordPressDeliveryStatus,
     WordPressPublishingSettings,
+    VisualBrandProfile,
+    VisualPreferenceFeedback,
 )
 from .preferences import build_preference_profile
 from .quality import evaluate_draft, pending_required_facts
@@ -190,6 +192,7 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 .media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}.media-card{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}.media-card img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover;background:#eceef1}.media-card-copy{padding:12px}.media-card-copy strong,.media-card-copy small{display:block;overflow-wrap:anywhere}.media-choice{position:relative;padding:0;overflow:hidden}.media-choice input{position:absolute;top:10px;left:10px;width:18px;height:18px;z-index:2}.media-choice img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover}.media-choice span{display:block;padding:10px}.upload-panel input[type=file]{background:#fff}.publishing-tabs{display:flex;gap:6px;padding:6px;background:#eceef1;border-radius:13px;margin-bottom:24px}.publishing-tab{padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.publishing-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}
 .media-search{display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:18px}.media-search button{width:auto}.media-grid+.filter-tabs{margin-top:20px}
 .image-studio{border-color:#ffd2b6;background:linear-gradient(145deg,#fff 0%,#fff8f3 100%)}.image-candidates{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.image-candidate{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}.image-candidate img{display:block;width:100%;aspect-ratio:3/2;object-fit:cover;background:#eceef1}.image-candidate-copy{padding:13px}.image-candidate-copy p{margin:6px 0}.image-controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}.image-controls .span-2,.image-controls button{grid-column:1/-1}.cost-note{padding:10px 12px;border-radius:10px;background:#fff7ed;color:#9a5514;font-size:12px}
+.visual-reference-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}.visual-reference{border:1px solid var(--line);border-radius:13px;overflow:hidden;background:#fff}.visual-reference img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover}.visual-reference div{padding:10px}.visual-feedback{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}.visual-feedback form{display:grid;gap:8px}.visual-feedback .feedback-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .integration-tabs{display:flex;gap:6px;padding:6px;background:#eceef1;border-radius:13px;margin-bottom:24px}.integration-tab{padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.integration-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}.integration-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.integration-card{display:flex;flex-direction:column;gap:12px}.integration-card h2,.integration-card p{margin:0}.integration-card-head{display:flex;justify-content:space-between;gap:14px;align-items:start}.integration-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.integration-detail{padding:10px;border-radius:10px;background:#f7f7f8;font-size:12px}.integration-card details{border-top:1px solid var(--line);padding-top:10px}.integration-card summary{cursor:pointer;font-weight:700;color:var(--muted)}.integration-card form{margin-top:auto}.badge.guarded{color:var(--warning);background:#fff7ed;border-color:#fed7aa}.badge.live{color:#b45309;background:#fffbeb;border-color:#fcd34d}.badge.off{color:#68707d;background:#f3f4f6}.badge.needs_setup{color:var(--danger);background:#fef2f2;border-color:#fecaca}.security-principles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.security-principle{padding:18px;border:1px solid var(--line);border-radius:14px;background:#fafafa}.security-principle h3{margin-top:0}
 @media(max-width:980px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:820px){.sidebar{position:static;width:auto;padding:12px}.workspace{padding-bottom:12px;margin-bottom:8px}.workspace small,.nav-label,.sidebar-foot{display:none}
@@ -1542,6 +1545,9 @@ def create_app(
         size: str = Form("1536x1024"),
         quality: str = Form("medium"),
     ) -> RedirectResponse:
+        record = store.get_item(content_item_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Editorial item not found")
         draft = store.get_latest_draft(content_item_id)
         if draft is None:
             raise HTTPException(status_code=409, detail="Generate an article draft first.")
@@ -1553,10 +1559,14 @@ def create_app(
         if size not in SUPPORTED_IMAGE_SIZES or quality not in SUPPORTED_IMAGE_QUALITIES:
             raise HTTPException(status_code=400, detail="Choose a supported size and quality.")
         try:
+            visual_profile = store.get_visual_brand_profile(record.brand_id)
+            visual_feedback = store.list_visual_feedback(record.brand_id)[:12]
             prompt = build_featured_image_prompt(
                 draft,
                 creative_direction=creative_direction,
                 style=style,
+                visual_profile=visual_profile,
+                visual_feedback=visual_feedback,
             )
             generator = image_writer_factory()
             result = await generator.generate(
@@ -1588,6 +1598,8 @@ def create_app(
             filename="pending.png",
             file_path="pending.png",
             alt_text=f"Editorial illustration for {draft.title}",
+            visual_profile_snapshot=visual_profile,
+            visual_feedback_snapshot=visual_feedback,
         )
         filename = f"{asset.asset_id}.png"
         asset.filename = filename
@@ -1602,6 +1614,39 @@ def create_app(
         encoded_id = quote(content_item_id, safe="")
         return RedirectResponse(
             f"/items/{encoded_id}?tab=delivery&channel=images&notice=Image%20candidate%20generated",
+            status_code=303,
+        )
+
+    @app.post("/items/{content_item_id}/images/{asset_id}/feedback")
+    def add_generated_image_feedback(
+        content_item_id: str,
+        asset_id: str,
+        signal: str = Form(),
+        dimension: str = Form(),
+        note: str = Form(),
+    ) -> RedirectResponse:
+        record = store.get_item(content_item_id)
+        asset = store.get_generated_image(asset_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Editorial item not found")
+        if asset is None or asset.content_item_id != content_item_id:
+            raise HTTPException(status_code=404, detail="Generated image not found")
+        if dimension not in {"style", "composition", "colour", "subject"}:
+            raise HTTPException(status_code=400, detail="Choose a supported visual feedback area.")
+        try:
+            store.add_visual_feedback(
+                VisualPreferenceFeedback(
+                    brand_id=record.brand_id,
+                    asset_id=asset_id,
+                    signal=PreferenceSignal(signal),
+                    dimension=dimension,
+                    note=note.strip(),
+                )
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/items/{quote(content_item_id, safe='')}?tab=delivery&channel=images&notice=Visual%20feedback%20saved",
             status_code=303,
         )
 
@@ -1709,8 +1754,12 @@ def create_app(
         )
 
     @app.get("/preferences", response_class=HTMLResponse)
-    def preferences(tab: str = "overview", preview_type: str = "news_report") -> HTMLResponse:
-        allowed_tabs = {"overview", "article", "social", "learning"}
+    def preferences(
+        tab: str = "overview",
+        preview_type: str = "news_report",
+        media_q: str = "",
+    ) -> HTMLResponse:
+        allowed_tabs = {"overview", "visual", "article", "social", "learning"}
         if tab not in allowed_tabs:
             raise HTTPException(status_code=404, detail="Brand Brain tab not found")
         try:
@@ -1719,6 +1768,8 @@ def create_app(
             raise HTTPException(status_code=404, detail="Article type not found") from exc
 
         brand = store.get_brand_profile()
+        visual_profile = store.get_visual_brand_profile(brand.brand_id)
+        wordpress_media = store.list_wordpress_media()
         all_rules = store.list_brand_rules()
         active_rules = [rule for rule in all_rules if rule.enabled]
         feedback_signals = store.list_feedback_signals()
@@ -1757,6 +1808,7 @@ def create_app(
             f"{label}</a>"
             for key, label in (
                 ("overview", "Overview"),
+                ("visual", "Visual identity"),
                 ("article", "Article voice"),
                 ("social", "Social voice"),
                 ("learning", "Learning inbox"),
@@ -1866,6 +1918,74 @@ def create_app(
             "<button type='submit'>Add article rule</button></form></aside></div>"
         )
 
+        reference_by_id = {item.media_id: item for item in wordpress_media}
+        reference_cards = "".join(
+            "<article class='visual-reference'>"
+            f"<img src='{escape(reference_by_id[media_id].thumbnail_url or reference_by_id[media_id].source_url, quote=True)}' alt='{escape(reference_by_id[media_id].alt_text or reference_by_id[media_id].title, quote=True)}'>"
+            f"<div><strong>{escape(reference_by_id[media_id].title)}</strong>"
+            f"<form method='post' action='/preferences/visual/references/{media_id}/remove'>"
+            "<button class='button-revise' type='submit'>Remove reference</button></form></div></article>"
+            for media_id in visual_profile.reference_media_ids
+            if media_id in reference_by_id
+        ) or "<p class='muted'>No reference images selected yet.</p>"
+        media_query = media_q.strip().lower()
+        available_media = [
+            item for item in wordpress_media
+            if item.media_id not in visual_profile.reference_media_ids
+            and (
+                not media_query
+                or media_query in item.title.lower()
+                or media_query in item.filename.lower()
+                or media_query in item.alt_text.lower()
+            )
+        ]
+        available_media = available_media[:40]
+        reference_options = "".join(
+            f"<option value='{item.media_id}'>{escape(item.title)} · media #{item.media_id}</option>"
+            for item in available_media
+        )
+        visual_body = (
+            "<div class='layout'><section class='stack'><article class='panel'>"
+            "<p class='eyebrow'>APPROVED VISUAL DIRECTION</p><h2>How the brand should look</h2>"
+            "<p class='muted'>These are instructions, not automatic decisions. Every future image candidate records the version used.</p>"
+            "<form class='profile-grid' method='post' action='/preferences/visual'>"
+            f"<label class='span-2'><span class='field-label'>Overall visual direction</span><textarea name='visual_summary' placeholder='Describe the recognisable visual feel of the brand'>{escape(visual_profile.visual_summary)}</textarea></label>"
+            f"<label><span class='field-label'>Primary colour</span><input name='primary_color' value='{escape(visual_profile.primary_color, quote=True)}' placeholder='#111827'></label>"
+            f"<label><span class='field-label'>Accent colour</span><input name='accent_color' value='{escape(visual_profile.accent_color, quote=True)}' placeholder='#F47A2A'></label>"
+            f"<label><span class='field-label'>Background colour</span><input name='background_color' value='{escape(visual_profile.background_color, quote=True)}' placeholder='#FFFFFF'></label>"
+            f"<label><span class='field-label'>People and faces</span><select name='people_policy'>" + "".join(
+                f"<option{' selected' if option == visual_profile.people_policy else ''}>{escape(option)}</option>"
+                for option in ("Only when people meaningfully support the story", "Prefer people and human moments", "Avoid people and faces")
+            ) + "</select></label>"
+            f"<label><span class='field-label'>Preferred styles</span><textarea name='preferred_styles' placeholder='One per line'>{escape(chr(10).join(visual_profile.preferred_styles))}</textarea></label>"
+            f"<label><span class='field-label'>Styles to avoid</span><textarea name='avoided_styles' placeholder='One per line'>{escape(chr(10).join(visual_profile.avoided_styles))}</textarea></label>"
+            f"<label class='span-2'><span class='field-label'>Composition rules</span><textarea name='composition_rules' placeholder='One clear rule per line'>{escape(chr(10).join(visual_profile.composition_rules))}</textarea></label>"
+            f"<label class='span-2'><span class='field-label'>Text inside images</span><select name='text_policy'>" + "".join(
+                f"<option{' selected' if option == visual_profile.text_policy else ''}>{escape(option)}</option>"
+                for option in ("No readable text in generated images", "Allow short editorial labels when essential", "Allow headline text")
+            ) + "</select></label>"
+            "<button class='button-approve span-2' type='submit'>Save visual identity</button></form></article>"
+            "<article class='panel'><h2>Reference image library</h2>"
+            "<p class='muted'>Choose strong examples from the synced WordPress media library. They document the look you want; the app does not copy or publish them automatically.</p>"
+            f"<div class='visual-reference-grid'>{reference_cards}</div>"
+            "<form class='media-search' method='get' action='/preferences'>"
+            "<input type='hidden' name='tab' value='visual'>"
+            f"<input type='search' name='media_q' value='{escape(media_q, quote=True)}' placeholder='Search the media library by title or filename'>"
+            "<button class='button-revise' type='submit'>Find images</button></form>"
+            + (
+                "<form method='post' action='/preferences/visual/references'><label><span class='field-label'>Add a reference</span>"
+                f"<select name='media_id' required><option value=''>Choose an image…</option>{reference_options}</select></label>"
+                "<button type='submit'>Add reference image</button></form>"
+                if reference_options else "<p class='muted'>No matching images. Try a different search or sync the WordPress media library.</p>"
+            )
+            + "</article></section><aside class='stack'><article class='panel'><p class='eyebrow'>PROMPT PREVIEW</p>"
+            "<h2>What the image generator receives</h2>"
+            f"<pre class='memory-preview'>{escape(visual_profile.prompt_context())}</pre>"
+            "</article><article class='panel'><h2>How visual learning works</h2>"
+            "<p class='muted'>On each generated candidate, record what should be repeated or avoided. Recent reviewed feedback then guides the next prompt and remains visible in its snapshot.</p>"
+            "</article></aside></div>"
+        )
+
         social_rules = [
             rule for rule in all_rules if rule.channel != BrandRuleChannel.ARTICLE
         ]
@@ -1926,6 +2046,7 @@ def create_app(
         )
         bodies = {
             "overview": overview_body,
+            "visual": visual_body,
             "article": article_body,
             "social": social_body,
             "learning": learning_body,
@@ -2014,6 +2135,68 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return RedirectResponse(f"/preferences?tab={return_tab}", status_code=303)
+
+    @app.post("/preferences/visual")
+    def update_visual_brand_profile(
+        visual_summary: str = Form(""),
+        primary_color: str = Form(""),
+        accent_color: str = Form(""),
+        background_color: str = Form(""),
+        preferred_styles: str = Form(""),
+        avoided_styles: str = Form(""),
+        composition_rules: str = Form(""),
+        people_policy: str = Form(),
+        text_policy: str = Form(),
+    ) -> RedirectResponse:
+        current = store.get_visual_brand_profile()
+        colours = [primary_color.strip(), accent_color.strip(), background_color.strip()]
+        if any(
+            colour and (len(colour) != 7 or not colour.startswith("#") or
+                        any(character not in "0123456789abcdefABCDEF" for character in colour[1:]))
+            for colour in colours
+        ):
+            raise HTTPException(status_code=400, detail="Use six-digit colours such as #F47A2A.")
+
+        def lines(value: str) -> list[str]:
+            return list(dict.fromkeys(line.strip() for line in value.splitlines() if line.strip()))
+
+        try:
+            store.save_visual_brand_profile(
+                VisualBrandProfile(
+                    brand_id=current.brand_id,
+                    visual_summary=visual_summary.strip(),
+                    primary_color=colours[0].upper(),
+                    accent_color=colours[1].upper(),
+                    background_color=colours[2].upper(),
+                    preferred_styles=lines(preferred_styles),
+                    avoided_styles=lines(avoided_styles),
+                    composition_rules=lines(composition_rules),
+                    people_policy=people_policy.strip(),
+                    text_policy=text_policy.strip(),
+                    reference_media_ids=current.reference_media_ids,
+                    updated_at=current.updated_at,
+                )
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse("/preferences?tab=visual&notice=Visual%20identity%20saved", status_code=303)
+
+    @app.post("/preferences/visual/references")
+    def add_visual_reference(media_id: int = Form()) -> RedirectResponse:
+        profile = store.get_visual_brand_profile()
+        profile.reference_media_ids.append(media_id)
+        try:
+            store.save_visual_brand_profile(profile)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse("/preferences?tab=visual&notice=Reference%20image%20added", status_code=303)
+
+    @app.post("/preferences/visual/references/{media_id}/remove")
+    def remove_visual_reference(media_id: int) -> RedirectResponse:
+        profile = store.get_visual_brand_profile()
+        profile.reference_media_ids = [item for item in profile.reference_media_ids if item != media_id]
+        store.save_visual_brand_profile(profile)
+        return RedirectResponse("/preferences?tab=visual&notice=Reference%20image%20removed", status_code=303)
 
     @app.post("/preferences/rules/{rule_id}")
     def update_brand_rule(
@@ -2333,6 +2516,7 @@ def create_app(
             wordpress_upload_ready = False
         generated_image_cards = []
         for asset in current_generated_images:
+            asset_feedback = store.list_visual_feedback(record.brand_id, asset.asset_id)
             if asset.wordpress_media_id:
                 candidate_action = (
                     "<span class='badge approved'>Selected in WordPress</span>"
@@ -2363,7 +2547,13 @@ def create_app(
                 f"<span class='badge'>{escape(asset.provider)} · {escape(asset.model)}</span>"
                 f"<p><strong>{escape(asset.style.title())}</strong></p>"
                 f"<small class='muted'>{escape(asset.size)} · {escape(asset.quality)} quality · generated {asset.created_at.strftime('%Y-%m-%d %H:%M UTC')}</small>"
-                f"{candidate_action}</div></article>"
+                f"{candidate_action}<div class='visual-feedback'><strong>Teach future images</strong>"
+                f"<p class='muted'>{len(asset_feedback)} saved signal(s). Say exactly what should be repeated or avoided.</p>"
+                f"<form method='post' action='/items/{encoded_id}/images/{escape(asset.asset_id, quote=True)}/feedback'>"
+                "<div class='feedback-row'><select name='signal'><option value='prefer'>Use more like this</option><option value='avoid'>Avoid this</option></select>"
+                "<select name='dimension'><option value='style'>Visual style</option><option value='composition'>Layout and composition</option><option value='colour'>Colour</option><option value='subject'>Subject matter</option></select></div>"
+                "<textarea name='note' required maxlength='600' placeholder='For example: Keep the simple central metaphor and generous empty space.'></textarea>"
+                "<button class='button-revise' type='submit'>Save visual feedback</button></form></div></div></article>"
             )
         style_options = "".join(
             f"<option value='{escape(style, quote=True)}'{' selected' if style == 'editorial illustration' else ''}>{escape(style.title())}</option>"
@@ -2381,7 +2571,7 @@ def create_app(
         image_studio_panel = (
             "<section class='panel image-studio'><p class='eyebrow'>AI IMAGE STUDIO</p>"
             "<h2>Create a featured-image candidate</h2>"
-            "<p class='muted'>The article title, summary, and saved brand profile shape the prompt. Generated images stay local until you explicitly upload one.</p>"
+            "<p class='muted'>The article, approved visual identity, and recent reviewed image feedback shape the prompt. Generated images stay local until you explicitly upload one.</p>"
             f"<p><span class='badge {'selected' if image_generation_ready else 'warning'}'>{escape(image_config.readiness_note)}</span></p>"
             f"<form class='image-controls' method='post' action='/items/{encoded_id}/images/generate'>"
             "<textarea class='span-2' name='creative_direction' maxlength='1200' placeholder='Optional creative direction—for example: Show several developer tools converging into one clear workflow, with warm orange accents.'></textarea>"

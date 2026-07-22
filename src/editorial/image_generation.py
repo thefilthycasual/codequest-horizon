@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from .models import ArticleDraft
+from .models import ArticleDraft, VisualBrandProfile, VisualPreferenceFeedback
 
 
 SUPPORTED_IMAGE_SIZES = {"1536x1024", "1024x1024", "1024x1536"}
@@ -107,6 +107,8 @@ def build_featured_image_prompt(
     *,
     creative_direction: str,
     style: str,
+    visual_profile: VisualBrandProfile | None = None,
+    visual_feedback: list[VisualPreferenceFeedback] | None = None,
 ) -> str:
     if style not in SUPPORTED_IMAGE_STYLES:
         raise ImageGenerationError("Choose one of the available visual styles.")
@@ -118,6 +120,15 @@ def build_featured_image_prompt(
         if brand
         else "Audience: developers and technology readers. Visual voice: credible, modern, useful, and restrained."
     )
+    visual_context = (
+        visual_profile.prompt_context()
+        if visual_profile
+        else "No additional visual identity rules."
+    )
+    feedback_context = "\n".join(
+        f"- {item.signal.value.title()} {item.dimension}: {item.note}"
+        for item in (visual_feedback or [])[:12]
+    ) or "- No reviewed image feedback yet."
     return (
         "Create a polished 3:2 editorial featured image for a technology article.\n"
         f"Article title: {draft.title}\n"
@@ -125,6 +136,8 @@ def build_featured_image_prompt(
         f"{brand_context}\n"
         f"Visual style: {style}.\n"
         f"Creative direction: {direction or 'Translate the central article idea into one clear visual metaphor.'}\n"
+        f"Approved visual identity:\n{visual_context}\n"
+        f"Recent human-reviewed image preferences:\n{feedback_context}\n"
         "Composition: one strong focal point, generous negative space, premium publication quality, "
         "and a layout that still works when cropped for website and social previews. "
         "Do not add readable text, logos, brand marks, fake interface screenshots, watermarks, "

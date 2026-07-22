@@ -13,6 +13,7 @@ from src.editorial.image_generation import (
 )
 from src.editorial.store import EditorialStore
 from src.editorial.web import create_app
+from src.editorial.models import VisualBrandProfile, WordPressMediaItem
 
 from test_editorial_wordpress import _StubPublisher, _approved_store
 
@@ -168,3 +169,80 @@ def test_image_studio_is_disabled_without_explicit_enablement(tmp_path) -> None:
     assert "Image generation is off" in page.text
     assert "Generate one candidate" in page.text
     assert "disabled" in page.text
+
+
+def test_visual_identity_and_reviewed_feedback_shape_future_image_prompts(tmp_path) -> None:
+    db_path = tmp_path / "editorial.sqlite3"
+    store, packet, _draft = _approved_store(db_path)
+    store.upsert_wordpress_media(
+        WordPressMediaItem(
+            media_id=88,
+            title="Approved visual reference",
+            source_url="https://example.com/reference.png",
+            mime_type="image/png",
+        )
+    )
+    generator = _StubImageGenerator()
+    client = TestClient(
+        create_app(
+            db_path,
+            image_generator_factory=lambda: generator,
+            image_config_factory=_ready_config,
+            generated_image_dir=tmp_path / "generated-images",
+        )
+    )
+    visual = client.post(
+        "/preferences/visual",
+        data={
+            "visual_summary": "Warm, restrained developer editorial imagery.",
+            "primary_color": "#111827",
+            "accent_color": "#f47a2a",
+            "background_color": "#ffffff",
+            "preferred_styles": "simple visual metaphors",
+            "avoided_styles": "busy collages",
+            "composition_rules": "Leave generous negative space",
+            "people_policy": "Avoid people and faces",
+            "text_policy": "No readable text in generated images",
+        },
+        follow_redirects=False,
+    )
+    reference = client.post(
+        "/preferences/visual/references",
+        data={"media_id": 88},
+        follow_redirects=False,
+    )
+    item_id = packet.brief.content_item_id
+    first = client.post(
+        f"/items/{item_id}/images/generate",
+        data={"style": "editorial illustration", "size": "1536x1024", "quality": "medium"},
+        follow_redirects=False,
+    )
+    asset = store.list_generated_images(item_id)[0]
+    feedback = client.post(
+        f"/items/{item_id}/images/{asset.asset_id}/feedback",
+        data={
+            "signal": "prefer",
+            "dimension": "composition",
+            "note": "Keep the single clear focal point.",
+        },
+        follow_redirects=False,
+    )
+    second = client.post(
+        f"/items/{item_id}/images/generate",
+        data={"style": "editorial illustration", "size": "1536x1024", "quality": "medium"},
+        follow_redirects=False,
+    )
+
+    assert all(response.status_code == 303 for response in (visual, reference, first, feedback, second))
+    profile = store.get_visual_brand_profile()
+    assert profile.accent_color == "#F47A2A"
+    assert profile.reference_media_ids == [88]
+    assert "Warm, restrained" in generator.requests[-1][0]
+    assert "Keep the single clear focal point" in generator.requests[-1][0]
+    latest = store.list_generated_images(item_id)[0]
+    assert latest.visual_profile_snapshot == profile
+    assert len(latest.visual_feedback_snapshot) == 1
+    visual_page = client.get("/preferences?tab=visual")
+    assert "Approved visual reference" in visual_page.text
+    image_page = client.get(f"/items/{item_id}?tab=delivery&channel=images")
+    assert "Teach future images" in image_page.text
