@@ -23,6 +23,7 @@ from .models import (
     DiscordApprovalRequest,
     DiscordApprovalStatus,
     EditorialPacket,
+    GeneratedImageAsset,
     Organization,
     PreferenceScope,
     PreferenceSignal,
@@ -320,6 +321,23 @@ class EditorialStore:
             )
             connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS generated_images (
+                    asset_id TEXT PRIMARY KEY,
+                    content_item_id TEXT NOT NULL,
+                    draft_id TEXT NOT NULL,
+                    asset_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (content_item_id)
+                        REFERENCES editorial_items(content_item_id)
+                        ON DELETE CASCADE,
+                    FOREIGN KEY (draft_id)
+                        REFERENCES editorial_drafts(draft_id)
+                        ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS wordpress_deliveries (
                     delivery_id TEXT PRIMARY KEY,
                     content_item_id TEXT NOT NULL,
@@ -512,6 +530,48 @@ class EditorialStore:
                 "SELECT MAX(synced_at) AS synced_at FROM wordpress_media"
             ).fetchone()
         return str(row["synced_at"]) if row and row["synced_at"] else None
+
+    def save_generated_image(self, asset: GeneratedImageAsset) -> GeneratedImageAsset:
+        if self.get_item(asset.content_item_id) is None:
+            raise KeyError(asset.content_item_id)
+        draft = self.get_draft(asset.draft_id)
+        if draft is None or draft.content_item_id != asset.content_item_id:
+            raise ValueError("Generated images must belong to an existing article version.")
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO generated_images "
+                "(asset_id, content_item_id, draft_id, asset_json, created_at) "
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(asset_id) DO UPDATE SET "
+                "asset_json = excluded.asset_json",
+                (
+                    asset.asset_id,
+                    asset.content_item_id,
+                    asset.draft_id,
+                    asset.model_dump_json(),
+                    asset.created_at.isoformat(),
+                ),
+            )
+        return asset
+
+    def get_generated_image(self, asset_id: str) -> GeneratedImageAsset | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT asset_json FROM generated_images WHERE asset_id = ?",
+                (asset_id,),
+            ).fetchone()
+        return GeneratedImageAsset.model_validate_json(row["asset_json"]) if row else None
+
+    def list_generated_images(self, content_item_id: str) -> list[GeneratedImageAsset]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT asset_json FROM generated_images WHERE content_item_id = ? "
+                "ORDER BY created_at DESC",
+                (content_item_id,),
+            ).fetchall()
+        return [
+            GeneratedImageAsset.model_validate_json(row["asset_json"])
+            for row in rows
+        ]
 
     def save_wordpress_publishing_settings(
         self, settings: WordPressPublishingSettings
@@ -953,6 +1013,14 @@ class EditorialStore:
                 "SELECT draft_json FROM editorial_drafts WHERE content_item_id = ? "
                 "ORDER BY created_at DESC, draft_id DESC LIMIT 1",
                 (content_item_id,),
+            ).fetchone()
+        return ArticleDraft.model_validate_json(row["draft_json"]) if row else None
+
+    def get_draft(self, draft_id: str) -> ArticleDraft | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT draft_json FROM editorial_drafts WHERE draft_id = ?",
+                (draft_id,),
             ).fetchone()
         return ArticleDraft.model_validate_json(row["draft_json"]) if row else None
 

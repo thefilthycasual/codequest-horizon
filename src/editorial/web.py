@@ -10,7 +10,7 @@ from typing import Callable
 from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
 from .automation import (
     AutomationConfig,
@@ -40,6 +40,16 @@ from .drafting import (
     DraftGenerationError,
     create_ollama_cloud_draft_generator,
 )
+from .image_generation import (
+    ImageGenerationConfig,
+    ImageGenerationError,
+    ImageGenerator,
+    SUPPORTED_IMAGE_QUALITIES,
+    SUPPORTED_IMAGE_SIZES,
+    SUPPORTED_IMAGE_STYLES,
+    build_featured_image_prompt,
+    create_configured_image_generator,
+)
 from .models import (
     ArticleDraft,
     ArticleType,
@@ -54,6 +64,7 @@ from .models import (
     DraftDecision,
     DraftParagraph,
     DraftSection,
+    GeneratedImageAsset,
     PreferenceSignal,
     SocialPlatform,
     SocialPostDraft,
@@ -176,6 +187,7 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 .category-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.category-option{display:grid;grid-template-columns:auto 1fr;gap:9px;align-items:start;padding:11px;border:1px solid var(--line);border-radius:11px;background:#fafafa}.category-option input{width:auto;margin-top:4px}.category-option small,.category-option strong{display:block}.publishing-list{display:grid}.publishing-row{display:grid;grid-template-columns:minmax(0,1fr) 220px auto;gap:18px;align-items:center;padding:17px 0;border-top:1px solid var(--line)}.publishing-row:first-child{border-top:0}.publishing-row h3{margin:4px 0}.taxonomy-list{display:flex;gap:7px;flex-wrap:wrap}.taxonomy-item{padding:7px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:12px}.connection-card{border-color:#cdebdc;background:#f8fffb}
 .media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}.media-card{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}.media-card img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover;background:#eceef1}.media-card-copy{padding:12px}.media-card-copy strong,.media-card-copy small{display:block;overflow-wrap:anywhere}.media-choice{position:relative;padding:0;overflow:hidden}.media-choice input{position:absolute;top:10px;left:10px;width:18px;height:18px;z-index:2}.media-choice img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover}.media-choice span{display:block;padding:10px}.upload-panel input[type=file]{background:#fff}.publishing-tabs{display:flex;gap:6px;padding:6px;background:#eceef1;border-radius:13px;margin-bottom:24px}.publishing-tab{padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.publishing-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}
 .media-search{display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:18px}.media-search button{width:auto}.media-grid+.filter-tabs{margin-top:20px}
+.image-studio{border-color:#ffd2b6;background:linear-gradient(145deg,#fff 0%,#fff8f3 100%)}.image-candidates{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.image-candidate{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}.image-candidate img{display:block;width:100%;aspect-ratio:3/2;object-fit:cover;background:#eceef1}.image-candidate-copy{padding:13px}.image-candidate-copy p{margin:6px 0}.image-controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}.image-controls .span-2,.image-controls button{grid-column:1/-1}.cost-note{padding:10px 12px;border-radius:10px;background:#fff7ed;color:#9a5514;font-size:12px}
 @media(max-width:980px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:820px){.sidebar{position:static;width:auto;padding:12px}.workspace{padding-bottom:12px;margin-bottom:8px}.workspace small,.nav-label,.sidebar-foot{display:none}
 .side-nav{display:flex;overflow:auto}.nav-item{white-space:nowrap}.content{margin-left:0}.shell{padding:30px 18px 70px}.story-tabs{border-radius:10px}.story-tab{padding:8px 12px}}
@@ -186,6 +198,7 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 @media(max-width:760px){.source-card form,.topic-form,.group-card form{grid-template-columns:1fr}.topic-form .span-2,.topic-form button,.group-card form .group-categories,.group-card form button,.source-card form button{grid-column:1}}
 @media(max-width:760px){.publishing-row{grid-template-columns:1fr}.category-grid{grid-template-columns:1fr}}
 @media(max-width:560px){.media-search{grid-template-columns:1fr}.media-search button{width:100%}}
+@media(max-width:620px){.image-controls{grid-template-columns:1fr}.image-controls .span-2,.image-controls button{grid-column:1}}
 @media(max-width:560px){.run-row{grid-template-columns:1fr}.stat-grid{grid-template-columns:1fr 1fr}.queue-tools form{grid-template-columns:1fr}.queue-tools button{width:100%}}
 @media(max-width:480px){.nav-item{font-size:13px;padding:9px}.nav-icon{display:none}}
 """
@@ -346,6 +359,9 @@ def create_app(
     buffer_publisher_factory: Callable[[], BufferPublisher] | None = None,
     automation_runner_factory: Callable[[], EditorialAutomationRunner] | None = None,
     source_config_path: str | Path | None = None,
+    image_generator_factory: Callable[[], ImageGenerator] | None = None,
+    image_config_factory: Callable[[], ImageGenerationConfig] | None = None,
+    generated_image_dir: str | Path | None = None,
 ) -> FastAPI:
     app = FastAPI(title="CodeQuest Editorial Workspace")
     store = EditorialStore(db_path)
@@ -368,6 +384,9 @@ def create_app(
     automation_factory = automation_runner_factory or (
         lambda: create_automation_runner(db_path, automation_settings)
     )
+    image_writer_factory = image_generator_factory or create_configured_image_generator
+    image_settings_factory = image_config_factory or ImageGenerationConfig.from_env
+    image_output_dir = Path(generated_image_dir or Path(db_path).parent / "generated-images")
 
     def approved_draft(content_item_id: str):
         record = store.get_item(content_item_id)
@@ -1366,6 +1385,148 @@ def create_app(
             status_code=303,
         )
 
+    @app.post("/items/{content_item_id}/images/generate")
+    async def generate_featured_image(
+        content_item_id: str,
+        creative_direction: str = Form(""),
+        style: str = Form("editorial illustration"),
+        size: str = Form("1536x1024"),
+        quality: str = Form("medium"),
+    ) -> RedirectResponse:
+        draft = store.get_latest_draft(content_item_id)
+        if draft is None:
+            raise HTTPException(status_code=409, detail="Generate an article draft first.")
+        if len(creative_direction.strip()) > 1_200:
+            raise HTTPException(
+                status_code=400,
+                detail="Creative direction must be 1,200 characters or fewer.",
+            )
+        if size not in SUPPORTED_IMAGE_SIZES or quality not in SUPPORTED_IMAGE_QUALITIES:
+            raise HTTPException(status_code=400, detail="Choose a supported size and quality.")
+        try:
+            prompt = build_featured_image_prompt(
+                draft,
+                creative_direction=creative_direction,
+                style=style,
+            )
+            generator = image_writer_factory()
+            result = await generator.generate(
+                prompt=prompt,
+                size=size,
+                quality=quality,
+            )
+            validate_image_upload(result.mime_type, result.image_bytes)
+        except ImageGenerationError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail="The image provider could not generate a candidate. No image was saved.",
+            ) from exc
+        asset = GeneratedImageAsset(
+            content_item_id=content_item_id,
+            draft_id=draft.draft_id,
+            provider=generator.provider_name,
+            model=generator.model_name,
+            prompt=result.prompt,
+            creative_direction=creative_direction.strip(),
+            style=style,
+            size=size,
+            quality=quality,
+            mime_type=result.mime_type,
+            filename="pending.png",
+            file_path="pending.png",
+            alt_text=f"Editorial illustration for {draft.title}",
+        )
+        filename = f"{asset.asset_id}.png"
+        asset.filename = filename
+        asset.file_path = filename
+        image_output_dir.mkdir(parents=True, exist_ok=True)
+        (image_output_dir / filename).write_bytes(result.image_bytes)
+        try:
+            store.save_generated_image(asset)
+        except Exception:
+            (image_output_dir / filename).unlink(missing_ok=True)
+            raise
+        encoded_id = quote(content_item_id, safe="")
+        return RedirectResponse(
+            f"/items/{encoded_id}?tab=delivery&channel=images&notice=Image%20candidate%20generated",
+            status_code=303,
+        )
+
+    @app.get("/generated-images/{asset_id}")
+    def generated_image_file(asset_id: str) -> FileResponse:
+        asset = store.get_generated_image(asset_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="Generated image not found")
+        safe_name = Path(asset.file_path).name
+        file_path = (image_output_dir / safe_name).resolve()
+        if file_path.parent != image_output_dir.resolve() or not file_path.is_file():
+            raise HTTPException(status_code=404, detail="Generated image file not found")
+        return FileResponse(file_path, media_type=asset.mime_type)
+
+    @app.post("/items/{content_item_id}/images/{asset_id}/wordpress")
+    async def upload_generated_image_to_wordpress(
+        content_item_id: str,
+        asset_id: str,
+        alt_text: str = Form(),
+    ) -> RedirectResponse:
+        _record, draft = approved_draft(content_item_id)
+        asset = store.get_generated_image(asset_id)
+        if asset is None or asset.content_item_id != content_item_id:
+            raise HTTPException(status_code=404, detail="Generated image not found")
+        if asset.draft_id != draft.draft_id:
+            raise HTTPException(
+                status_code=409,
+                detail="Generate a new image for the latest approved article version.",
+            )
+        delivery = store.get_wordpress_delivery(draft.draft_id)
+        if delivery and delivery.status == WordPressDeliveryStatus.DRAFT_CREATED:
+            raise HTTPException(
+                status_code=409,
+                detail="This WordPress draft already exists. Change its image in WordPress.",
+            )
+        cleaned_alt_text = alt_text.strip()
+        if not cleaned_alt_text:
+            raise HTTPException(
+                status_code=400,
+                detail="An accessibility description is required.",
+            )
+        file_path = (image_output_dir / Path(asset.file_path).name).resolve()
+        if file_path.parent != image_output_dir.resolve() or not file_path.is_file():
+            raise HTTPException(status_code=404, detail="Generated image file not found")
+        content = file_path.read_bytes()
+        try:
+            validate_image_upload(asset.mime_type, content)
+            media_item = await publisher_factory().upload_media(
+                filename=asset.filename,
+                content_type=asset.mime_type,
+                content=content,
+                title=f"{draft.title} featured image",
+                alt_text=cleaned_alt_text,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail="The generated image could not be uploaded to WordPress.",
+            ) from exc
+        store.upsert_wordpress_media(media_item)
+        settings = store.get_wordpress_publishing_settings(content_item_id)
+        settings.featured_media_id = media_item.media_id
+        store.save_wordpress_publishing_settings(settings)
+        asset.alt_text = cleaned_alt_text
+        asset.wordpress_media_id = media_item.media_id
+        store.save_generated_image(asset)
+        encoded_id = quote(content_item_id, safe="")
+        return RedirectResponse(
+            f"/items/{encoded_id}?tab=delivery&channel=images&notice=Generated%20image%20selected",
+            status_code=303,
+        )
+
     @app.post("/items/{content_item_id}/wordpress/settings")
     def save_wordpress_settings(
         content_item_id: str,
@@ -1771,12 +1932,15 @@ def create_app(
 
     @app.get("/items/{content_item_id}", response_class=HTMLResponse)
     def detail(
-        content_item_id: str, tab: str = "overview", channel: str = "wordpress"
+        content_item_id: str,
+        tab: str = "overview",
+        channel: str = "wordpress",
+        notice: str = "",
     ) -> HTMLResponse:
         allowed_tabs = {"overview", "intelligence", "editor", "review", "delivery", "learning"}
         if tab not in allowed_tabs:
             raise HTTPException(status_code=404, detail="Story tab not found")
-        if channel not in {"wordpress", "social"}:
+        if channel not in {"wordpress", "images", "social"}:
             raise HTTPException(status_code=404, detail="Delivery channel not found")
         record = store.get_item(content_item_id)
         if not record:
@@ -1793,6 +1957,8 @@ def create_app(
         wordpress_categories = store.list_wordpress_categories()
         wordpress_media = store.list_wordpress_media()
         wordpress_settings = store.get_wordpress_publishing_settings(content_item_id)
+        generated_images = store.list_generated_images(content_item_id)
+        image_config = image_settings_factory()
         social_campaign = (
             store.get_social_campaign(latest_draft.draft_id) if latest_draft else None
         )
@@ -2003,6 +2169,85 @@ def create_app(
         discord_panel = (
             "<section class='panel discord-panel'><span class='badge discord-badge'>Discord · optional</span>"
             f"<h2>Team feedback</h2>{discord_controls}</section>"
+        )
+        current_generated_images = [
+            asset
+            for asset in generated_images
+            if latest_draft and asset.draft_id == latest_draft.draft_id
+        ]
+        try:
+            wordpress_upload_ready = (
+                wordpress_publisher_factory is not None
+                or not WordPressConfig.from_env().dry_run
+            )
+        except ValueError:
+            wordpress_upload_ready = False
+        generated_image_cards = []
+        for asset in current_generated_images:
+            if asset.wordpress_media_id:
+                candidate_action = (
+                    "<span class='badge approved'>Selected in WordPress</span>"
+                    f"<p class='muted'>Media #{asset.wordpress_media_id}</p>"
+                )
+            elif record.status != "approved":
+                candidate_action = (
+                    "<p class='muted'>Approve this article version before uploading its image to WordPress.</p>"
+                )
+            elif wordpress_delivery and wordpress_delivery.status == WordPressDeliveryStatus.DRAFT_CREATED:
+                candidate_action = (
+                    "<p class='muted'>The WordPress draft already exists. Add or change its image in WordPress.</p>"
+                )
+            elif not wordpress_upload_ready:
+                candidate_action = (
+                    "<p class='muted'>WordPress upload is in dry-run mode or not configured.</p>"
+                )
+            else:
+                candidate_action = (
+                    f"<form method='post' action='/items/{encoded_id}/images/{escape(asset.asset_id, quote=True)}/wordpress'>"
+                    f"<input name='alt_text' required value='{escape(asset.alt_text, quote=True)}' placeholder='Accessibility description'>"
+                    "<button class='button-approve' type='submit'>Upload and use as featured image</button></form>"
+                )
+            generated_image_cards.append(
+                "<article class='image-candidate'>"
+                f"<img src='/generated-images/{escape(asset.asset_id, quote=True)}' alt='{escape(asset.alt_text, quote=True)}'>"
+                "<div class='image-candidate-copy'>"
+                f"<span class='badge'>{escape(asset.provider)} · {escape(asset.model)}</span>"
+                f"<p><strong>{escape(asset.style.title())}</strong></p>"
+                f"<small class='muted'>{escape(asset.size)} · {escape(asset.quality)} quality · generated {asset.created_at.strftime('%Y-%m-%d %H:%M UTC')}</small>"
+                f"{candidate_action}</div></article>"
+            )
+        style_options = "".join(
+            f"<option value='{escape(style, quote=True)}'{' selected' if style == 'editorial illustration' else ''}>{escape(style.title())}</option>"
+            for style in sorted(SUPPORTED_IMAGE_STYLES)
+        )
+        size_options = "".join(
+            f"<option value='{size}'{' selected' if size == '1536x1024' else ''}>{size} · {'landscape' if size == '1536x1024' else 'square' if size == '1024x1024' else 'portrait'}</option>"
+            for size in sorted(SUPPORTED_IMAGE_SIZES, reverse=True)
+        )
+        quality_options = "".join(
+            f"<option value='{quality}'{' selected' if quality == 'medium' else ''}>{quality.title()} quality</option>"
+            for quality in ("low", "medium", "high")
+        )
+        image_generation_ready = image_generator_factory is not None or image_config.ready
+        image_studio_panel = (
+            "<section class='panel image-studio'><p class='eyebrow'>AI IMAGE STUDIO</p>"
+            "<h2>Create a featured-image candidate</h2>"
+            "<p class='muted'>The article title, summary, and saved brand profile shape the prompt. Generated images stay local until you explicitly upload one.</p>"
+            f"<p><span class='badge {'selected' if image_generation_ready else 'warning'}'>{escape(image_config.readiness_note)}</span></p>"
+            f"<form class='image-controls' method='post' action='/items/{encoded_id}/images/generate'>"
+            "<textarea class='span-2' name='creative_direction' maxlength='1200' placeholder='Optional creative direction—for example: Show several developer tools converging into one clear workflow, with warm orange accents.'></textarea>"
+            f"<select name='style'>{style_options}</select><select name='size'>{size_options}</select>"
+            f"<select name='quality'>{quality_options}</select>"
+            "<div class='cost-note'>Generation uses provider credits. Nothing runs automatically, and each click requests one image.</div>"
+            f"<button type='submit'{' disabled' if not image_generation_ready else ''}>Generate one candidate</button></form>"
+            + (
+                f"<h3>Current article candidates</h3><div class='image-candidates'>{''.join(generated_image_cards)}</div>"
+                if generated_image_cards
+                else "<p class='muted'>No image candidates have been generated for this article version yet.</p>"
+            )
+            + "</section>"
+            if latest_draft
+            else ""
         )
         if latest_draft and wordpress_delivery and wordpress_delivery.status == WordPressDeliveryStatus.DRAFT_CREATED:
             category_names = [
@@ -2302,12 +2547,15 @@ def create_app(
         delivery_tabs = (
             "<nav class='subtabs' aria-label='Delivery channels'>"
             f"<a class='subtab{' active' if channel == 'wordpress' else ''}' href='/items/{encoded_id}?tab=delivery&channel=wordpress'>WordPress</a>"
+            f"<a class='subtab{' active' if channel == 'images' else ''}' href='/items/{encoded_id}?tab=delivery&channel=images'>Images ({len(current_generated_images)})</a>"
             f"<a class='subtab{' active' if channel == 'social' else ''}' href='/items/{encoded_id}?tab=delivery&channel=social'>Social campaign</a></nav>"
         )
         delivery_body = (
             f"<div class='layout'><section class='stack'>{publishing_panel}</section>"
             f"<aside class='stack'>{discord_panel}</aside></div>"
             if channel == "wordpress"
+            else image_studio_panel
+            if channel == "images"
             else social_panel
         )
         versions_html = "".join(
@@ -2463,6 +2711,12 @@ def create_app(
             f"<span class='badge {escape(record.status)}'>{escape(record.status)}</span>"
             f"<span>{len(packet.evidence.sources)} evidence source(s)</span>"
             f"<span>·</span><span>{len(draft_versions)} draft version(s)</span></div></header>"
+            + (
+                f"<div class='config-note'>{escape(notice)}</div>"
+                if notice
+                else ""
+            )
+            +
             f"<nav class='story-tabs' aria-label='Story workspace'>{tabs_html}</nav>"
             f"<div class='tab-intro'><div><p class='eyebrow'>{tab.upper()}</p>"
             f"<p class='muted'>{escape(descriptions[tab])}</p></div></div>"

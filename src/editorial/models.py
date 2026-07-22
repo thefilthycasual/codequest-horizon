@@ -351,6 +351,27 @@ class WordPressPublishingSettings(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class GeneratedImageAsset(BaseModel):
+    """A locally reviewed image candidate that is not published by default."""
+
+    asset_id: str = Field(default_factory=lambda: f"image_{uuid4().hex}")
+    content_item_id: str
+    draft_id: str
+    provider: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    prompt: str = Field(min_length=1)
+    creative_direction: str = ""
+    style: str = Field(min_length=1)
+    size: str = Field(min_length=1)
+    quality: str = Field(min_length=1)
+    mime_type: str = Field(pattern=r"^image/(png|jpeg|webp)$")
+    filename: str = Field(min_length=1)
+    file_path: str = Field(min_length=1)
+    alt_text: str = Field(min_length=1)
+    wordpress_media_id: int | None = Field(default=None, ge=1)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class WordPressDelivery(BaseModel):
     """Durable record for delivering one exact approved draft to WordPress."""
 
