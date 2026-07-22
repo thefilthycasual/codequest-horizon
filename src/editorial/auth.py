@@ -32,7 +32,7 @@ def required_permission(method: str, path: str) -> str:
 
     if method.upper() in {"GET", "HEAD", "OPTIONS"}:
         return "content:read"
-    if path.startswith(("/workspace", "/integrations", "/sources")) or path == "/operations/run":
+    if path.startswith(("/settings", "/workspace", "/integrations", "/sources")) or path == "/operations/run":
         return "workspace:manage"
     if path.endswith("/decision") or "/decision/" in path:
         return "content:approve"

@@ -178,10 +178,8 @@ font-weight:850;letter-spacing:-.04em}.workspace strong,.workspace small{display
 text-decoration:none;color:#464b55;font-weight:650}.nav-item:hover{background:#f6f6f7}.nav-item.active{background:#f1f2f3;color:#111}
 .nav-icon{width:19px;height:19px;display:grid;place-items:center;color:#747a84}.nav-icon svg{width:18px;height:18px;
 fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.nav-item.active .nav-icon{color:var(--accent)}
-.sidebar-foot{margin-top:auto;border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;align-items:center;gap:10px}
-.status-dot{width:9px;height:9px;border-radius:50%;background:#2db879;box-shadow:0 0 0 4px #e8f8f1}.sidebar-foot strong,.sidebar-foot small{display:block}
-.sidebar-foot small{font-size:11px;color:var(--muted)}.content{margin-left:var(--sidebar);min-height:100vh}.shell{max-width:1320px;padding:42px 38px 80px}
-.clerk-account{display:grid;gap:10px;padding:12px 0}.clerk-account:empty{display:none}.clerk-account #clerk-user-button,.clerk-account #clerk-organization-switcher{min-height:30px}.sign-in-shell{min-height:100vh;display:grid;place-items:center;padding:32px;background:var(--surface)}.sign-in-card{width:min(100%,440px)}
+.account-menu{margin-top:auto;position:relative}.account-menu details{position:relative}.account-menu summary{list-style:none;cursor:pointer;border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;grid-template-columns:38px minmax(0,1fr) 18px;align-items:center;gap:10px;background:#fff}.account-menu summary::-webkit-details-marker{display:none}.account-avatar{width:38px;height:38px;display:grid;place-items:center;border-radius:11px;background:var(--ink);color:#fff;font-size:12px;font-weight:850}.account-copy{min-width:0}.account-copy strong,.account-copy small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.account-copy small{font-size:11px;color:var(--muted)}.account-chevron{color:var(--muted);font-size:16px;transition:transform .15s}.account-menu details[open] .account-chevron{transform:rotate(180deg)}.account-popover{position:absolute;left:0;right:0;bottom:calc(100% + 8px);padding:8px;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 42px rgba(17,24,39,.16);display:grid;gap:3px}.account-popover a{display:block;padding:9px 10px;border-radius:9px;text-decoration:none;color:#383e48;font-size:13px;font-weight:650}.account-popover a:hover{background:#f4f5f6}.account-popover .menu-label{padding:7px 10px 3px;color:#9a9fa8;font-size:9px;font-weight:850;letter-spacing:.1em;text-transform:uppercase}.account-popover .menu-divider{height:1px;background:var(--line);margin:5px}.account-popover #clerk-user-button,.account-popover #clerk-organization-switcher{min-height:30px;padding:4px 8px}.content{margin-left:var(--sidebar);min-height:100vh}.shell{max-width:1320px;padding:42px 38px 80px}
+.settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.settings-card{display:block;text-decoration:none}.settings-card:hover{border-color:#f0b58c;transform:translateY(-1px)}.settings-card h2{margin:8px 0}.settings-card p{margin-bottom:0}.settings-breadcrumb{display:flex;align-items:center;gap:8px;margin-bottom:18px;color:var(--muted);font-size:12px}.settings-breadcrumb a{color:inherit;text-decoration:none}.sign-in-shell{min-height:100vh;display:grid;place-items:center;padding:32px;background:var(--surface)}.sign-in-card{width:min(100%,440px)}
 .stat-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:14px;margin-bottom:28px}.stat-card{background:#fff;border:1px solid var(--line);
 border-radius:14px;padding:20px}.stat-card small{color:var(--muted)}.stat-value{display:block;font-size:34px;font-weight:820;line-height:1.1;letter-spacing:-.04em;margin:7px 0}
 .access-value{display:block;font-size:20px;font-weight:780;line-height:1.2;margin:8px 0 5px}.role-table{width:100%;border-collapse:collapse}.role-table th,.role-table td{padding:12px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}.role-table th:first-child,.role-table td:first-child{width:110px}
@@ -213,7 +211,7 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 .visual-reference-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}.visual-reference{border:1px solid var(--line);border-radius:13px;overflow:hidden;background:#fff}.visual-reference img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover}.visual-reference div{padding:10px}.visual-feedback{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}.visual-feedback form{display:grid;gap:8px}.visual-feedback .feedback-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .integration-tabs{display:flex;gap:6px;padding:6px;background:#eceef1;border-radius:13px;margin-bottom:24px}.integration-tab{padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.integration-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}.integration-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.integration-card{display:flex;flex-direction:column;gap:12px}.integration-card h2,.integration-card p{margin:0}.integration-card-head{display:flex;justify-content:space-between;gap:14px;align-items:start}.integration-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.integration-detail{padding:10px;border-radius:10px;background:#f7f7f8;font-size:12px}.integration-card details{border-top:1px solid var(--line);padding-top:10px}.integration-card summary{cursor:pointer;font-weight:700;color:var(--muted)}.integration-card form{margin-top:auto}.badge.guarded{color:var(--warning);background:#fff7ed;border-color:#fed7aa}.badge.live{color:#b45309;background:#fffbeb;border-color:#fcd34d}.badge.off{color:#68707d;background:#f3f4f6}.badge.needs_setup{color:var(--danger);background:#fef2f2;border-color:#fecaca}.security-principles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.security-principle{padding:18px;border:1px solid var(--line);border-radius:14px;background:#fafafa}.security-principle h3{margin-top:0}
 @media(max-width:980px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:820px){.sidebar{position:static;width:auto;padding:12px}.workspace{padding-bottom:12px;margin-bottom:8px}.workspace small,.nav-label,.sidebar-foot{display:none}
+@media(max-width:820px){.sidebar{position:static;width:auto;padding:12px}.workspace{padding-bottom:12px;margin-bottom:8px}.workspace small,.nav-label{display:none}.account-menu{margin-top:8px}.account-popover{position:static;margin-top:6px}
 .side-nav{display:flex;overflow:auto}.nav-item{white-space:nowrap}.content{margin-left:0}.shell{padding:30px 18px 70px}.story-tabs{border-radius:10px}.story-tab{padding:8px 12px}}
 @media(max-width:700px){.queue-tools{grid-template-columns:1fr}.queue-row{grid-template-columns:1fr}.queue-side{text-align:left}.queue-side .meta{justify-content:flex-start}.queue-side form{max-width:230px}}
 @media(max-width:700px){.profile-grid,.brain-rule form{grid-template-columns:1fr}.profile-grid .span-2,.brain-rule form .rule-instruction,.brain-rule form button{grid-column:1}.promote-form{grid-template-columns:1fr}.promote-form button{width:100%}}
@@ -223,7 +221,7 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 @media(max-width:760px){.publishing-row{grid-template-columns:1fr}.category-grid{grid-template-columns:1fr}}
 @media(max-width:560px){.media-search{grid-template-columns:1fr}.media-search button{width:100%}}
 @media(max-width:620px){.image-controls{grid-template-columns:1fr}.image-controls .span-2,.image-controls button{grid-column:1}}
-@media(max-width:800px){.integration-grid,.security-principles{grid-template-columns:1fr}.integration-details{grid-template-columns:1fr}}
+@media(max-width:800px){.integration-grid,.security-principles,.settings-grid{grid-template-columns:1fr}.integration-details{grid-template-columns:1fr}}
 @media(max-width:560px){.run-row{grid-template-columns:1fr}.stat-grid{grid-template-columns:1fr 1fr}.queue-tools form{grid-template-columns:1fr}.queue-tools button{width:100%}}
 @media(max-width:480px){.nav-item{font-size:13px;padding:9px}.nav-icon{display:none}}
 """
@@ -235,11 +233,8 @@ _ICONS = {
     "editorial": "<svg viewBox='0 0 24 24'><path d='M4 5h16v14H4z'/><path d='M8 9h8M8 13h8M8 17h5'/></svg>",
     "drafts": "<svg viewBox='0 0 24 24'><path d='M6 3h9l4 4v14H6z'/><path d='M14 3v5h5M9 12h6M9 16h6'/></svg>",
     "publishing": "<svg viewBox='0 0 24 24'><path d='M5 4h14v16H5z'/><path d='M8 8h8M8 12h8M8 16h5'/><path d='m14 4 5 5'/></svg>",
-    "integrations": "<svg viewBox='0 0 24 24'><path d='M8 12h8M12 8v8'/><path d='M7 4h10v4a4 4 0 0 1 0 8v4H7v-4a4 4 0 0 1 0-8z'/></svg>",
     "memory": "<svg viewBox='0 0 24 24'><path d='M12 3a4 4 0 0 0-4 4v1a4 4 0 0 0 0 8v1a4 4 0 0 0 4 4'/><path d='M12 3a4 4 0 0 1 4 4v1a4 4 0 0 1 0 8v1a4 4 0 0 1-4 4M12 3v18'/></svg>",
     "operations": "<svg viewBox='0 0 24 24'><path d='M4 7h10M4 17h16M18 7h2M4 12h3M11 12h9'/><circle cx='16' cy='7' r='2'/><circle cx='9' cy='12' r='2'/></svg>",
-    "access": "<svg viewBox='0 0 24 24'><circle cx='12' cy='8' r='4'/><path d='M4 21a8 8 0 0 1 16 0M18 11l2 2 3-3'/></svg>",
-    "workspace_admin": "<svg viewBox='0 0 24 24'><path d='M4 20V6l8-3 8 3v14'/><path d='M8 9h2M14 9h2M8 13h2M14 13h2M9 20v-3h6v3'/></svg>",
 }
 
 _SOCIAL_LABELS = {
@@ -276,22 +271,18 @@ def _page(
             _nav_item("editorial", "Editorial queue", "/editorial", active),
             _nav_item("drafts", "Draft library", "/drafts", active),
             _nav_item("publishing", "Publishing Hub", "/publishing", active),
-            _nav_item("integrations", "Integrations", "/integrations", active),
             _nav_item("memory", "Brand Brain", "/preferences", active),
             _nav_item("operations", "Operations", "/operations", active),
-            _nav_item("access", "Access & roles", "/access", active),
-            _nav_item("workspace_admin", "Workspace settings", "/workspace", active),
         )
     )
     return HTMLResponse(
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         f"<title>{escape(title)} · CodeQuest</title><style>{_STYLE}{_ADMIN_STYLE}</style>{clerk_head}</head>"
-        f"<body><aside class='sidebar'><a class='workspace' href='/workspace'><div class='workspace-mark'>{escape(brand_mark)}</div>"
-        f"<div><strong>{escape(brand_name)}</strong><small>Switch brand workspace</small></div></a>"
+        f"<body><aside class='sidebar'><a class='workspace' href='/'><div class='workspace-mark'>{escape(brand_mark)}</div>"
+        f"<div><strong>{escape(brand_name)}</strong><small>Editorial workspace</small></div></a>"
         f"<p class='nav-label'>Workspace</p><nav class='side-nav'>{navigation}</nav>"
-        f"{clerk_account}<div class='sidebar-foot'><span class='status-dot'></span><div><strong>{escape(organization_name)}</strong>"
-        "<small>Horizon discovery connected</small></div></div></aside>"
+        f"{clerk_account}</aside>"
         f"<main class='content'><div class='shell'>{body}</div></main></body></html>"
     )
 
@@ -299,8 +290,26 @@ def _page(
 def _clerk_browser_markup(config: AuthConfig) -> tuple[str, str]:
     """Return public Clerk browser assets and mount points; never include secret keys."""
 
+    settings_links = (
+        "<div class='menu-label'>Settings</div>"
+        "<a href='/settings/profile'>Your profile</a>"
+        "<a href='/settings/workspace'>Workspace &amp; brands</a>"
+        "<a href='/settings/integrations'>Integrations &amp; API keys</a>"
+        "<a href='/settings/access'>Team &amp; access</a>"
+        "<a href='/settings/billing'>Billing</a>"
+    )
     if not config.clerk_frontend_ready:
-        return "", ""
+        account = (
+            "<div class='account-menu'><details><summary>"
+            "<span class='account-avatar'>LO</span><span class='account-copy'>"
+            "<strong>Local owner</strong><small>Account &amp; settings</small></span>"
+            "<span class='account-chevron'>⌃</span></summary><div class='account-popover'>"
+            f"{settings_links}<div class='menu-divider'></div>"
+            "<div class='menu-label'>Development mode</div>"
+            "<a href='/settings/access'>Clerk is not enabled</a>"
+            "</div></details></div>"
+        )
+        return "", account
     frontend_url = str(config.frontend_api_url)
     parsed = urlsplit(frontend_url)
     if parsed.scheme != "https" or not parsed.netloc:
@@ -313,14 +322,22 @@ def _clerk_browser_markup(config: AuthConfig) -> tuple[str, str]:
         f"src='{base}/npm/@clerk/clerk-js@6/dist/clerk.browser.js'></script>"
         "<script>window.addEventListener('load',async()=>{"
         "if(!window.Clerk)return;await Clerk.load({ui:{ClerkUI:window.__internal_ClerkUICtor}});"
+        "const name=document.getElementById('account-name');if(name&&Clerk.user)name.textContent=Clerk.user.fullName||Clerk.user.primaryEmailAddress?.emailAddress||'Your account';"
+        "const detail=document.getElementById('account-detail');if(detail&&Clerk.user)detail.textContent=Clerk.user.primaryEmailAddress?.emailAddress||'Account & settings';"
         "const user=document.getElementById('clerk-user-button');if(user&&Clerk.user)Clerk.mountUserButton(user);"
         "const org=document.getElementById('clerk-organization-switcher');if(org&&Clerk.user)Clerk.mountOrganizationSwitcher(org,{hidePersonal:true});"
         "const signIn=document.getElementById('clerk-sign-in');if(signIn&&!Clerk.user)Clerk.mountSignIn(signIn);"
         "});</script>"
     )
     account = (
-        "<div class='clerk-account' aria-label='Signed-in account'>"
-        "<div id='clerk-organization-switcher'></div><div id='clerk-user-button'></div></div>"
+        "<div class='account-menu' aria-label='Signed-in account'><details><summary>"
+        "<span class='account-avatar'>ME</span><span class='account-copy'>"
+        "<strong id='account-name'>Your account</strong><small id='account-detail'>Account &amp; settings</small></span>"
+        "<span class='account-chevron'>⌃</span></summary><div class='account-popover'>"
+        "<div id='clerk-organization-switcher'></div>"
+        f"{settings_links}<div class='menu-divider'></div>"
+        "<div id='clerk-user-button'></div>"
+        "</div></details></div>"
     )
     return head, account
 
@@ -675,7 +692,60 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return campaign, post, config, selected_mode, scheduled_for, payload
 
-    @app.get("/workspace", response_class=HTMLResponse)
+    @app.get("/settings", response_class=HTMLResponse)
+    def settings_home() -> HTMLResponse:
+        cards = "".join(
+            (
+                "<a class='panel settings-card' href='/settings/profile'><p class='eyebrow'>PERSONAL</p><h2>Your profile</h2><p class='muted'>Identity, sign-in methods, security, and personal preferences.</p></a>",
+                "<a class='panel settings-card' href='/settings/workspace'><p class='eyebrow'>ORGANISATION</p><h2>Workspace &amp; brands</h2><p class='muted'>Organisations, brand workspaces, and the active brand.</p></a>",
+                "<a class='panel settings-card' href='/settings/integrations'><p class='eyebrow'>CONNECTIONS</p><h2>Integrations &amp; API keys</h2><p class='muted'>WordPress, AI models, social publishing, images, Clerk, and protected credentials.</p></a>",
+                "<a class='panel settings-card' href='/settings/access'><p class='eyebrow'>ADMINISTRATION</p><h2>Team &amp; access</h2><p class='muted'>Authentication, team roles, permissions, and Clerk rollout readiness.</p></a>",
+                "<a class='panel settings-card' href='/settings/billing'><p class='eyebrow'>SUBSCRIPTION</p><h2>Billing</h2><p class='muted'>Plan, usage, invoices, and the future SaaS billing connection.</p></a>",
+            )
+        )
+        return render_page(
+            "Settings",
+            "<header class='page-head'><p class='eyebrow'>SETTINGS</p>"
+            "<h1>Manage your account and <span class='accent'>organisation.</span></h1>"
+            "<p class='muted'>Administrative controls, credentials, access, and billing are kept away from the everyday editorial workflow.</p></header>"
+            f"<section class='settings-grid'>{cards}</section>",
+        )
+
+    @app.get("/settings/profile", response_class=HTMLResponse)
+    def profile_settings(request: Request) -> HTMLResponse:
+        principal: AuthPrincipal = request.state.principal
+        identity = "Clerk account" if principal.provider == "clerk" else "Local development owner"
+        return render_page(
+            "Your profile",
+            "<div class='settings-breadcrumb'><a href='/settings'>Settings</a><span>›</span><strong>Your profile</strong></div>"
+            "<header class='page-head'><p class='eyebrow'>YOUR PROFILE</p><h1>Personal account and <span class='accent'>security.</span></h1>"
+            "<p class='muted'>Your identity is separate from organisation-wide content and connection settings.</p></header>"
+            "<div class='layout'><section class='panel'><h2>Account</h2>"
+            f"<p><strong>{escape(identity)}</strong></p><p class='muted'>Role in this workspace: {escape(principal.role.value.title())}</p>"
+            "<p class='muted'>When Clerk is active, use the account control in the sidebar to manage your name, email addresses, password, passkeys, and connected sign-in methods.</p></section>"
+            "<aside class='panel'><h2>Personal preferences</h2><p class='muted'>Notification and personal dashboard preferences will live here. Brand-writing preferences remain in Brand Brain because they affect generated content for everyone.</p></aside></div>",
+        )
+
+    @app.get("/settings/billing", response_class=HTMLResponse)
+    def billing_settings() -> HTMLResponse:
+        return render_page(
+            "Billing",
+            "<div class='settings-breadcrumb'><a href='/settings'>Settings</a><span>›</span><strong>Billing</strong></div>"
+            "<header class='page-head'><p class='eyebrow'>BILLING</p><h1>Subscription and <span class='accent'>usage.</span></h1>"
+            "<p class='muted'>This is the future organisation billing boundary; no payment provider is connected yet.</p></header>"
+            "<section class='stat-grid'><article class='stat-card'><small>Current plan</small><strong class='access-value'>Development</strong><span class='muted'>No charge</span></article>"
+            "<article class='stat-card'><small>Billing status</small><strong class='access-value'>Not connected</strong><span class='muted'>Setup comes before SaaS launch</span></article>"
+            "<article class='stat-card'><small>Usage period</small><strong class='access-value'>Not metered</strong><span class='muted'>Generation costs remain provider-owned</span></article>"
+            "<article class='stat-card'><small>Invoices</small><strong class='access-value'>None</strong><span class='muted'>No billing history</span></article></section>"
+            "<section class='panel'><h2>Planned billing controls</h2><p class='muted'>Plans, seats, included generation allowance, overage limits, invoices, payment methods, and cancellation controls will appear here. Stripe Billing is the recommended existing solution when this phase begins.</p></section>",
+        )
+
+    @app.get("/workspace")
+    def legacy_workspace(notice: str = "") -> RedirectResponse:
+        suffix = f"?notice={quote(notice)}" if notice else ""
+        return RedirectResponse(f"/settings/workspace{suffix}", status_code=308)
+
+    @app.get("/settings/workspace", response_class=HTMLResponse)
     def workspace_settings(notice: str = "") -> HTMLResponse:
         active_brand = store.get_brand_profile()
         organizations = store.list_organizations()
@@ -700,7 +770,7 @@ def create_app(
             + (
                 "<a class='text-link' href='/preferences'>Manage this brand’s identity →</a>"
                 if brand.brand_id == active_brand.brand_id
-                else f"<form method='post' action='/workspace/switch'><input type='hidden' name='brand_id' value='{escape(brand.brand_id, quote=True)}'><button type='submit'>Switch to this brand</button></form>"
+                else f"<form method='post' action='/settings/workspace/switch'><input type='hidden' name='brand_id' value='{escape(brand.brand_id, quote=True)}'><button type='submit'>Switch to this brand</button></form>"
             )
             + "</article>"
             for brand in brands
@@ -714,24 +784,24 @@ def create_app(
         )
         return render_page(
             "Workspace settings",
-            "<header class='page-head'><p class='eyebrow'>WORKSPACE SETTINGS</p>"
+            "<div class='settings-breadcrumb'><a href='/settings'>Settings</a><span>›</span><strong>Workspace &amp; brands</strong></div>"
+            "<header class='page-head'><p class='eyebrow'>WORKSPACE &amp; BRANDS</p>"
             "<h1>Manage organisations and <span class='accent'>brands.</span></h1>"
             "<p class='muted'>Each brand has its own stories, writing rules, visual identity, and learning history. Switching changes the entire editorial workspace.</p></header>"
             f"{notice_html}<section class='integration-grid'>{brand_cards}</section>"
             "<div class='layout' style='margin-top:20px'><section class='panel'><p class='eyebrow'>NEW BRAND</p>"
             "<h2>Add a brand workspace</h2><p class='muted'>Use a separate brand when content should learn a different voice, audience, or visual identity.</p>"
-            "<form method='post' action='/workspace/brands'>"
+            "<form method='post' action='/settings/workspace/brands'>"
             f"<label><span class='field-label'>Organisation</span><select name='organization_id'>{organization_options}</select></label>"
             "<label><span class='field-label'>Brand name</span><input name='name' required maxlength='100' placeholder='For example: Acme Developer Platform'></label>"
             "<label><span class='field-label'>Short description</span><textarea name='description' maxlength='600' placeholder='What this brand does and who it serves'></textarea></label>"
             "<button type='submit'>Create and open brand</button></form></section>"
             "<aside class='panel'><p class='eyebrow'>NEW ORGANISATION</p><h2>Add an organisation</h2>"
             "<p class='muted'>An organisation is the future billing and access boundary. It can contain one or more brands.</p>"
-            "<form method='post' action='/workspace/organizations'>"
+            "<form method='post' action='/settings/workspace/organizations'>"
             "<label><span class='field-label'>Organisation name</span><input name='name' required maxlength='100' placeholder='For example: Acme Group'></label>"
             "<button class='button-revise' type='submit'>Add organisation</button></form>"
             "<div class='cost-note'>This phase isolates content and learning. User invitations, roles, billing, and per-organisation secret vaults come later.</div></aside></div>",
-            active="workspace_admin",
         )
 
     @app.get("/api/auth/status")
@@ -780,7 +850,11 @@ def create_app(
             f"<body><main class='sign-in-shell'>{content}</main></body></html>"
         )
 
-    @app.get("/access", response_class=HTMLResponse)
+    @app.get("/access")
+    def legacy_access() -> RedirectResponse:
+        return RedirectResponse("/settings/access", status_code=308)
+
+    @app.get("/settings/access", response_class=HTMLResponse)
     def access_center(request: Request) -> HTMLResponse:
         principal: AuthPrincipal = request.state.principal
         clerk_state = (
@@ -809,7 +883,8 @@ def create_app(
         )
         return render_page(
             "Access & roles",
-            "<header class='page-head'><p class='eyebrow'>ACCESS & ROLES</p>"
+            "<div class='settings-breadcrumb'><a href='/settings'>Settings</a><span>›</span><strong>Team &amp; access</strong></div>"
+            "<header class='page-head'><p class='eyebrow'>TEAM &amp; ACCESS</p>"
             "<h1>Prepare each organisation for <span class='accent'>managed access.</span></h1>"
             "<p class='muted'>Clerk will handle sign-in and membership. CodeQuest keeps control of what each role may do inside a brand workspace.</p></header>"
             "<section class='stat-grid'>"
@@ -824,11 +899,11 @@ def create_app(
             "<p class='muted'>Until step three, local development keeps working and no team member can be accidentally locked out.</p></section>"
             "<section class='panel'><h2>Already wired</h2><p class='muted'>Every request now has a standard identity context with user, organisation, session and role. The same boundary works for today’s FastAPI pages and a future React or Next.js frontend.</p>"
             f"<p><span class='badge'>{escape(browser_label)}</span></p>"
-            "<a class='text-link' href='/integrations'>Review Clerk configuration status →</a></section></aside></div>",
-            active="access",
+            "<a class='text-link' href='/settings/integrations'>Review Clerk configuration status →</a></section></aside></div>",
         )
 
-    @app.post("/workspace/organizations")
+    @app.post("/workspace/organizations", include_in_schema=False)
+    @app.post("/settings/workspace/organizations")
     def create_organization(name: str = Form()) -> RedirectResponse:
         cleaned_name = name.strip()
         if not cleaned_name:
@@ -838,11 +913,12 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return RedirectResponse(
-            f"/workspace?notice={quote(organization.name)}%20organisation%20added",
+            f"/settings/workspace?notice={quote(organization.name)}%20organisation%20added",
             status_code=303,
         )
 
-    @app.post("/workspace/brands")
+    @app.post("/workspace/brands", include_in_schema=False)
+    @app.post("/settings/workspace/brands")
     def create_brand(
         organization_id: str = Form(),
         name: str = Form(),
@@ -863,18 +939,19 @@ def create_app(
         except (KeyError, ValueError) as exc:
             raise HTTPException(status_code=400, detail="Choose a valid organisation.") from exc
         return RedirectResponse(
-            f"/workspace?notice={quote(brand.name)}%20created%20and%20opened",
+            f"/settings/workspace?notice={quote(brand.name)}%20created%20and%20opened",
             status_code=303,
         )
 
-    @app.post("/workspace/switch")
+    @app.post("/workspace/switch", include_in_schema=False)
+    @app.post("/settings/workspace/switch")
     def switch_brand(brand_id: str = Form()) -> RedirectResponse:
         try:
             brand = store.set_active_brand(brand_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Brand workspace not found.") from exc
         return RedirectResponse(
-            f"/workspace?notice=Now%20working%20in%20{quote(brand.name)}",
+            f"/settings/workspace?notice=Now%20working%20in%20{quote(brand.name)}",
             status_code=303,
         )
 
@@ -1435,7 +1512,20 @@ def create_app(
             f"/operations?run={quote(run.run_id, safe='')}", status_code=303
         )
 
-    @app.get("/integrations", response_class=HTMLResponse)
+    @app.get("/integrations")
+    def legacy_integrations(
+        tab: str = "overview", notice: str = "", error: str = ""
+    ) -> RedirectResponse:
+        params = [f"tab={quote(tab)}"]
+        if notice:
+            params.append(f"notice={quote(notice)}")
+        if error:
+            params.append(f"error={quote(error)}")
+        return RedirectResponse(
+            f"/settings/integrations?{'&'.join(params)}", status_code=308
+        )
+
+    @app.get("/settings/integrations", response_class=HTMLResponse)
     def integrations_center(
         tab: str = "overview", notice: str = "", error: str = ""
     ) -> HTMLResponse:
@@ -1533,15 +1623,15 @@ def create_app(
                 "<details><summary>Administrator configuration names</summary>"
                 f"<div class='tags'>{config_names}</div>"
                 "<p class='muted'>Values are read from protected runtime secrets and are never shown here.</p></details>"
-                f"<form method='post' action='/integrations/{integration.key}/test'>"
+                f"<form method='post' action='/settings/integrations/{integration.key}/test'>"
                 f"<button class='button-revise' type='submit'{test_disabled}>{escape(integration.test_label)}</button></form>"
                 "</article>"
             )
         tabs = (
             "<nav class='integration-tabs' aria-label='Integration Center sections'>"
-            f"<a class='integration-tab{' active' if tab == 'overview' else ''}' href='/integrations?tab=overview'>Connections</a>"
-            f"<a class='integration-tab{' active' if tab == 'setup' else ''}' href='/integrations?tab=setup'>Brand setup</a>"
-            f"<a class='integration-tab{' active' if tab == 'security' else ''}' href='/integrations?tab=security'>Secrets & tenancy</a></nav>"
+            f"<a class='integration-tab{' active' if tab == 'overview' else ''}' href='/settings/integrations?tab=overview'>Connections</a>"
+            f"<a class='integration-tab{' active' if tab == 'setup' else ''}' href='/settings/integrations?tab=setup'>Brand setup</a>"
+            f"<a class='integration-tab{' active' if tab == 'security' else ''}' href='/settings/integrations?tab=security'>Secrets & tenancy</a></nav>"
         )
         feedback = (
             f"<div class='config-note'>{escape(notice)}</div>" if notice else ""
@@ -1587,21 +1677,21 @@ def create_app(
             + (f"<div class='config-error'>{escape(credential_vault_error)}</div>" if credential_vault_error else "")
             + "<section class='integration-grid'>"
             "<article class='panel'><p class='eyebrow'>WORDPRESS</p><h2>Website drafts and media</h2>"
-            "<form method='post' action='/integrations/wordpress/configure'>"
+            "<form method='post' action='/settings/integrations/wordpress/configure'>"
             f"<input name='base_url' type='url' required value='{escape(str(wordpress_settings.get('base_url', '')), quote=True)}' placeholder='https://example.com'>"
             f"<input name='username' required value='{escape(str(wordpress_settings.get('username', '')), quote=True)}' placeholder='WordPress username'>"
             f"<input name='secret' type='password' placeholder='{escape(secret_hint, quote=True)}'{disabled}>"
             f"<label class='toggle-field'><input type='checkbox' name='dry_run' value='true'{' checked' if wordpress_settings.get('dry_run', True) else ''}> Preview only</label>"
             f"<button type='submit'{disabled}>Save WordPress connection</button></form></article>"
             "<article class='panel'><p class='eyebrow'>OLLAMA CLOUD</p><h2>Article and social writing</h2>"
-            "<form method='post' action='/integrations/ollama/configure'>"
+            "<form method='post' action='/settings/integrations/ollama/configure'>"
             f"<input name='base_url' type='url' required value='{escape(str(ollama_settings.get('base_url', '')), quote=True)}' placeholder='https://ollama.com'>"
             f"<input name='writer_model' required value='{escape(str(ollama_settings.get('writer_model', '')), quote=True)}' placeholder='Article model'>"
             f"<input name='social_model' value='{escape(str(ollama_settings.get('social_model', '')), quote=True)}' placeholder='Social model (optional)'>"
             f"<input name='secret' type='password' placeholder='{escape(secret_hint, quote=True)}'{disabled}>"
             f"<button type='submit'{disabled}>Save Ollama connection</button></form></article>"
             "<article class='panel'><p class='eyebrow'>BUFFER</p><h2>Social publishing channels</h2>"
-            "<form method='post' action='/integrations/buffer/configure'>"
+            "<form method='post' action='/settings/integrations/buffer/configure'>"
             f"<input name='linkedin_channel_id' required value='{escape(str(buffer_settings.get('linkedin_channel_id', '')), quote=True)}' placeholder='LinkedIn channel ID'>"
             f"<input name='x_channel_id' required value='{escape(str(buffer_settings.get('x_channel_id', '')), quote=True)}' placeholder='X channel ID'>"
             f"<input name='facebook_channel_id' required value='{escape(str(buffer_settings.get('facebook_channel_id', '')), quote=True)}' placeholder='Facebook channel ID'>"
@@ -1610,7 +1700,7 @@ def create_app(
             f"<label class='toggle-field'><input type='checkbox' name='dry_run' value='true'{' checked' if buffer_settings.get('dry_run', True) else ''}> Preview only</label>"
             f"<button type='submit'{disabled}>Save Buffer connection</button></form></article>"
             "<article class='panel'><p class='eyebrow'>AI IMAGES</p><h2>Featured-image generation</h2>"
-            "<form method='post' action='/integrations/images/configure'>"
+            "<form method='post' action='/settings/integrations/images/configure'>"
             f"<input name='base_url' type='url' required value='{escape(str(image_settings.get('base_url', 'https://api.openai.com/v1')), quote=True)}' placeholder='https://api.openai.com/v1'>"
             f"<input name='image_model' required value='{escape(str(image_settings.get('model', 'gpt-image-2')), quote=True)}' placeholder='gpt-image-2'>"
             f"<input name='secret' type='password' placeholder='{escape(secret_hint, quote=True)}'{disabled}>"
@@ -1619,7 +1709,8 @@ def create_app(
         )
         return render_page(
             "Integrations",
-            "<header class='page-head'><p class='eyebrow'>INTEGRATIONS</p>"
+            "<div class='settings-breadcrumb'><a href='/settings'>Settings</a><span>›</span><strong>Integrations &amp; API keys</strong></div>"
+            "<header class='page-head'><p class='eyebrow'>INTEGRATIONS &amp; API KEYS</p>"
             "<h1>Every connection, with its <span class='accent'>safety state.</span></h1>"
             "<p class='muted'>See what is ready, what can write externally, and what an administrator still needs to configure.</p></header>"
             "<section class='stat-grid'>"
@@ -1628,10 +1719,10 @@ def create_app(
             f"<article class='stat-card'><small>Needs setup</small><strong class='stat-value'>{setup_count}</strong><span class='muted'>administrator attention</span></article>"
             f"<article class='stat-card'><small>Optional services off</small><strong class='stat-value'>{optional_off_count}</strong><span class='muted'>no workflow blocker</span></article></section>"
             f"{feedback}{tabs}{overview_body if tab == 'overview' else setup_body if tab == 'setup' else security_body}",
-            active="integrations",
         )
 
-    @app.post("/integrations/{provider}/configure")
+    @app.post("/integrations/{provider}/configure", include_in_schema=False)
+    @app.post("/settings/integrations/{provider}/configure")
     def configure_brand_integration(
         provider: str,
         base_url: str = Form(""),
@@ -1760,11 +1851,12 @@ def create_app(
         except SecretVaultError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return RedirectResponse(
-            f"/integrations?tab=setup&notice={quote(selected_provider.value.title())}%20connection%20saved",
+            f"/settings/integrations?tab=setup&notice={quote(selected_provider.value.title())}%20connection%20saved",
             status_code=303,
         )
 
-    @app.post("/integrations/{integration_key}/test")
+    @app.post("/integrations/{integration_key}/test", include_in_schema=False)
+    @app.post("/settings/integrations/{integration_key}/test")
     async def test_integration(integration_key: str) -> RedirectResponse:
         allowed = {"clerk", "horizon", "ollama", "wordpress", "images", "buffer", "discord"}
         if integration_key not in allowed:
@@ -1798,10 +1890,10 @@ def create_app(
                 f"{integration_key.title()} did not respond successfully. Check its credentials and endpoint."
             )
             return RedirectResponse(
-                f"/integrations?error={quote(detail, safe='')}", status_code=303
+                f"/settings/integrations?error={quote(detail, safe='')}", status_code=303
             )
         return RedirectResponse(
-            f"/integrations?notice={quote(message, safe='')}", status_code=303
+            f"/settings/integrations?notice={quote(message, safe='')}", status_code=303
         )
 
     @app.get("/editorial", response_class=HTMLResponse)
