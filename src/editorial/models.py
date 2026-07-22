@@ -43,6 +43,15 @@ class BrandRuleChannel(str, Enum):
     FACEBOOK = "facebook"
 
 
+class ConnectionProvider(str, Enum):
+    """External service configuration owned by one brand workspace."""
+
+    WORDPRESS = "wordpress"
+    OLLAMA = "ollama"
+    BUFFER = "buffer"
+    IMAGES = "images"
+
+
 class Organization(BaseModel):
     """Top-level tenant boundary prepared for the future SaaS product."""
 
@@ -83,6 +92,17 @@ class BrandProfile(BaseModel):
         ]
         populated = [f"- {label}: {value}" for label, value in fields if value]
         return "\n".join(populated) if populated else "No brand context has been configured yet."
+
+
+class BrandConnectionProfile(BaseModel):
+    """Non-secret connection settings plus an opaque encrypted credential payload."""
+
+    brand_id: str
+    provider: ConnectionProvider
+    settings: dict[str, str | bool] = Field(default_factory=dict)
+    encrypted_secrets: str = ""
+    configured_secret_names: list[str] = Field(default_factory=list)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class BrandRule(BaseModel):

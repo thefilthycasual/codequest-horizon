@@ -37,6 +37,8 @@ _DEFAULT_API_KEY_ENVS = {
 
 
 def _resolve_api_key(config: AIConfig, *, fallback: Optional[str] = None) -> str:
+    if config.api_key is not None:
+        return config.api_key.get_secret_value()
     api_key = os.getenv(config.api_key_env)
     if api_key:
         return api_key

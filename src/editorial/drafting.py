@@ -152,12 +152,14 @@ class ArticleDraftGenerator:
         )
 
 
-def create_ollama_cloud_draft_generator() -> ArticleDraftGenerator:
+def create_ollama_cloud_draft_generator(
+    *, base_url: str | None = None, model: str | None = None, api_key: str | None = None
+) -> ArticleDraftGenerator:
     """Create a writer configured only for a credentialed HTTPS Ollama Cloud endpoint."""
 
-    base_url = os.getenv("OLLAMA_BASE_URL", "").strip()
-    model = os.getenv("OLLAMA_MODEL_WRITER", "").strip()
-    api_key = os.getenv("OLLAMA_API_KEY", "").strip()
+    base_url = (base_url if base_url is not None else os.getenv("OLLAMA_BASE_URL", "")).strip()
+    model = (model if model is not None else os.getenv("OLLAMA_MODEL_WRITER", "")).strip()
+    api_key = (api_key if api_key is not None else os.getenv("OLLAMA_API_KEY", "")).strip()
     host = (urlsplit(base_url).hostname or "").lower()
     if not base_url or urlsplit(base_url).scheme != "https" or host in {"localhost", "127.0.0.1"}:
         raise DraftGenerationError(
@@ -173,6 +175,7 @@ def create_ollama_cloud_draft_generator() -> ArticleDraftGenerator:
         model=model,
         base_url=base_url,
         api_key_env="OLLAMA_API_KEY",
+        api_key=api_key,
         temperature=0.2,
         max_tokens=6_000,
     )

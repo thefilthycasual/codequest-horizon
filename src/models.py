@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 import re
 from typing import Annotated, Literal, Optional, List, Dict, Any, NamedTuple, Union
-from pydantic import BaseModel, HttpUrl, Field, field_validator
+from pydantic import BaseModel, HttpUrl, Field, SecretStr, field_validator
 
 
 class SourceType(str, Enum):
@@ -138,6 +138,7 @@ class AIConfig(BaseModel):
     model: str
     base_url: Optional[str] = None
     api_key_env: str
+    api_key: SecretStr | None = Field(default=None, exclude=True, repr=False)
     temperature: float = 0.3
     max_tokens: int = 4096
     throttle_sec: float = 0.0

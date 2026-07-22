@@ -6,6 +6,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.editorial.source_control import SourceControlService, parse_terms
+from src.editorial.models import BrandProfile, Organization
+from src.editorial.store import EditorialStore
 from src.editorial.web import create_app
 
 
@@ -128,3 +130,41 @@ def test_source_control_rejects_invalid_group_and_missing_configuration(tmp_path
         service.update_category_group(
             key="../../bad", name="Bad", categories="ai", limit=1
         )
+
+
+def test_each_brand_has_an_independent_horizon_source_policy(tmp_path) -> None:
+    config_path = _config(tmp_path)
+    db_path = tmp_path / "editorial.sqlite3"
+    store = EditorialStore(db_path)
+    organization = store.add_organization(Organization(name="Acme Group"))
+    brand = store.add_brand(
+        BrandProfile(organization_id=organization.organization_id, name="Acme")
+    )
+    store.set_active_brand(brand.brand_id)
+    client = TestClient(create_app(db_path, source_config_path=config_path))
+
+    empty = client.get("/sources")
+    initialized = client.post("/sources/initialize", follow_redirects=False)
+    changed = client.post(
+        "/sources/filtering",
+        data={
+            "score_threshold": "9.1",
+            "time_window_hours": "24",
+            "max_items": "3",
+            "default_group_limit": "2",
+            "include_keywords": "enterprise AI",
+            "exclude_keywords": "consumer gadgets",
+        },
+        follow_redirects=False,
+    )
+
+    brand_path = tmp_path / "brand-sources" / brand.brand_id / "config.json"
+    assert "has no source policy yet" in empty.text
+    assert initialized.status_code == 303
+    assert changed.status_code == 303
+    assert brand_path.is_file()
+    assert json.loads(brand_path.read_text())["filtering"]["ai_score_threshold"] == 9.1
+    assert json.loads(config_path.read_text())["filtering"]["ai_score_threshold"] != 9.1
+
+    store.set_active_brand("brand_codequest")
+    assert "9.1" not in client.get("/sources?tab=topics").text

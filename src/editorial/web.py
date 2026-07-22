@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+from dataclasses import replace
 from html import escape
 from pathlib import Path
 from typing import Callable
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
@@ -44,22 +47,24 @@ from .image_generation import (
     ImageGenerationConfig,
     ImageGenerationError,
     ImageGenerator,
+    OpenAIImageGenerator,
     SUPPORTED_IMAGE_QUALITIES,
     SUPPORTED_IMAGE_SIZES,
     SUPPORTED_IMAGE_STYLES,
     build_featured_image_prompt,
-    create_configured_image_generator,
 )
 from .integrations import IntegrationState, integration_inventory
 from .models import (
     ArticleDraft,
     ArticleType,
     BrandProfile,
+    BrandConnectionProfile,
     BrandRule,
     BrandRuleChannel,
     BufferDeliveryMode,
     BufferDeliveryStatus,
     DecisionOutcome,
+    ConnectionProvider,
     DiscordApprovalRequest,
     DiscordApprovalStatus,
     DraftDecision,
@@ -86,6 +91,7 @@ from .social import (
     validate_social_post,
 )
 from .source_control import ConfigError, SourceControlService
+from .secret_vault import SecretVaultError, WorkspaceSecretVault
 from .store import (
     EDITORIAL_STATUSES,
     FEEDBACK_DIMENSIONS,
@@ -388,6 +394,12 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="CodeQuest Editorial Workspace")
     store = EditorialStore(db_path)
+    try:
+        credential_vault = WorkspaceSecretVault.from_env()
+        credential_vault_error = ""
+    except SecretVaultError as exc:
+        credential_vault = WorkspaceSecretVault(None)
+        credential_vault_error = str(exc)
 
     def render_page(title: str, body: str, active: str = "overview") -> HTMLResponse:
         brand = store.get_brand_profile()
@@ -399,15 +411,74 @@ def create_app(
             brand_name=brand.name,
             organization_name=organization.name,
         )
-    writer_factory = draft_generator_factory or create_ollama_cloud_draft_generator
     bridge_factory = discord_bridge_factory or (
         lambda: DiscordApprovalBridge(DiscordConfig.from_env())
     )
+    def brand_connection_values(
+        provider: ConnectionProvider,
+    ) -> tuple[dict[str, str | bool], dict[str, str]] | None:
+        profile = store.get_brand_connection(provider)
+        if profile is None:
+            return None
+        return profile.settings, credential_vault.decrypt(profile.encrypted_secrets)
+
+    def active_wordpress_config() -> WordPressConfig:
+        values = brand_connection_values(ConnectionProvider.WORDPRESS)
+        if values is None:
+            return WordPressConfig.from_env()
+        settings, secrets = values
+        return WordPressConfig(
+            base_url=str(settings.get("base_url", "")).rstrip("/"),
+            username=str(settings.get("username", "")),
+            application_password=secrets.get("application_password", ""),
+            dry_run=bool(settings.get("dry_run", True)),
+        )
+
+    def active_writer_factory() -> ArticleDraftGenerator:
+        values = brand_connection_values(ConnectionProvider.OLLAMA)
+        if values is None:
+            return create_ollama_cloud_draft_generator()
+        settings, secrets = values
+        return create_ollama_cloud_draft_generator(
+            base_url=str(settings.get("base_url", "")),
+            model=str(settings.get("writer_model", "")),
+            api_key=secrets.get("api_key", ""),
+        )
+
+    def active_social_writer_factory() -> SocialCampaignGenerator:
+        values = brand_connection_values(ConnectionProvider.OLLAMA)
+        if values is None:
+            return create_ollama_cloud_social_generator()
+        settings, secrets = values
+        return create_ollama_cloud_social_generator(
+            base_url=str(settings.get("base_url", "")),
+            model=str(settings.get("social_model") or settings.get("writer_model", "")),
+            api_key=secrets.get("api_key", ""),
+        )
+
+    writer_factory = draft_generator_factory or active_writer_factory
+
     publisher_factory = wordpress_publisher_factory or (
-        lambda: WordPressPublisher(WordPressConfig.from_env())
+        lambda: WordPressPublisher(active_wordpress_config())
     )
-    social_writer_factory = social_generator_factory or create_ollama_cloud_social_generator
-    buffer_settings_factory = buffer_config_factory or BufferConfig.from_env
+    social_writer_factory = social_generator_factory or active_social_writer_factory
+    def active_buffer_config() -> BufferConfig:
+        values = brand_connection_values(ConnectionProvider.BUFFER)
+        if values is None:
+            return BufferConfig.from_env()
+        settings, secrets = values
+        return BufferConfig(
+            access_token=secrets.get("access_token", ""),
+            channel_ids={
+                SocialPlatform.LINKEDIN: str(settings.get("linkedin_channel_id", "")),
+                SocialPlatform.X: str(settings.get("x_channel_id", "")),
+                SocialPlatform.FACEBOOK: str(settings.get("facebook_channel_id", "")),
+            },
+            dry_run=bool(settings.get("dry_run", True)),
+            schedule_timezone=str(settings.get("schedule_timezone", "Africa/Johannesburg")),
+        )
+
+    buffer_settings_factory = buffer_config_factory or active_buffer_config
     buffer_sender_factory = buffer_publisher_factory or (
         lambda: BufferPublisher(buffer_settings_factory())
     )
@@ -415,12 +486,47 @@ def create_app(
     discovery_config_path = Path(
         source_config_path or automation_settings.discovery_config_path
     )
-    source_control = SourceControlService(discovery_config_path)
-    automation_factory = automation_runner_factory or (
-        lambda: create_automation_runner(db_path, automation_settings)
+    def active_source_path() -> Path:
+        brand_id = store.get_active_brand_id()
+        if brand_id == "brand_codequest":
+            return discovery_config_path
+        return Path(db_path).parent / "brand-sources" / brand_id / "config.json"
+
+    class ActiveSourceControl:
+        @property
+        def ready(self) -> bool:
+            return active_source_path().is_file()
+
+        def __getattr__(self, name: str):
+            return getattr(SourceControlService(active_source_path()), name)
+
+    source_control = ActiveSourceControl()
+
+    def automation_factory() -> EditorialAutomationRunner:
+        if automation_runner_factory is not None:
+            return automation_runner_factory()
+        active_settings = replace(
+            automation_settings,
+            discovery_config_path=active_source_path(),
+        )
+        return create_automation_runner(db_path, active_settings)
+    def active_image_config() -> ImageGenerationConfig:
+        values = brand_connection_values(ConnectionProvider.IMAGES)
+        if values is None:
+            return ImageGenerationConfig.from_env()
+        settings, secrets = values
+        return ImageGenerationConfig(
+            provider=str(settings.get("provider", "openai")),
+            model=str(settings.get("model", "gpt-image-2")),
+            api_key=secrets.get("api_key", ""),
+            base_url=str(settings.get("base_url", "https://api.openai.com/v1")),
+            enabled=bool(settings.get("enabled", False)),
+        )
+
+    image_settings_factory = image_config_factory or active_image_config
+    image_writer_factory = image_generator_factory or (
+        lambda: OpenAIImageGenerator(image_settings_factory())
     )
-    image_writer_factory = image_generator_factory or create_configured_image_generator
-    image_settings_factory = image_config_factory or ImageGenerationConfig.from_env
     image_output_dir = Path(generated_image_dir or Path(db_path).parent / "generated-images")
 
     def approved_draft(content_item_id: str):
@@ -751,12 +857,20 @@ def create_app(
         if tab not in {"sources", "topics"}:
             raise HTTPException(status_code=404, detail="Source control tab not found")
         if not source_control.ready:
+            active_brand = store.get_brand_profile()
+            template_ready = discovery_config_path.is_file()
+            setup_action = (
+                "<form method='post' action='/sources/initialize'>"
+                "<button type='submit'>Copy the current source policy</button></form>"
+                if active_brand.brand_id != "brand_codequest" and template_ready
+                else "<a class='text-link' href='/operations'>Open Operations →</a>"
+            )
             return render_page(
                 "Source Control",
                 "<section class='panel empty'><p class='eyebrow'>SOURCE CONTROL</p>"
                 "<h1>Discovery configuration <span class='accent'>needed.</span></h1>"
-                "<p class='muted'>Create the Horizon configuration from data/config.codequest.example.json, then manage it here.</p>"
-                "<a class='text-link' href='/operations'>Open Operations →</a></section>",
+                f"<p class='muted'>{escape(active_brand.name)} has no source policy yet. Copying creates an independent starting point; future edits affect only this brand.</p>"
+                f"{setup_action}</section>",
                 active="sources",
             )
         try:
@@ -907,6 +1021,29 @@ def create_app(
             active="sources",
         )
 
+    @app.post("/sources/initialize")
+    def initialize_brand_sources() -> RedirectResponse:
+        brand = store.get_brand_profile()
+        target = active_source_path()
+        if brand.brand_id == "brand_codequest":
+            raise HTTPException(
+                status_code=409,
+                detail="The original CodeQuest source policy must be configured directly.",
+            )
+        if target.is_file():
+            return RedirectResponse("/sources", status_code=303)
+        if not discovery_config_path.is_file():
+            raise HTTPException(
+                status_code=409,
+                detail="Configure the original workspace source policy before copying it.",
+            )
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(discovery_config_path, target)
+        return RedirectResponse(
+            f"/sources?notice={quote(brand.name)}%20now%20has%20an%20independent%20source%20policy",
+            status_code=303,
+        )
+
     def _optional_positive_int(value: str, label: str) -> int | None:
         if not value.strip():
             return None
@@ -1005,7 +1142,7 @@ def create_app(
         selected_run = store.get_automation_run(run) if run else latest
         if run and selected_run is None:
             raise HTTPException(status_code=404, detail="Automation run not found")
-        available = automation_runner_factory is not None or automation_settings.discovery_ready
+        available = automation_runner_factory is not None or source_control.ready
         rows = []
         for history_run in runs:
             error = (
@@ -1109,7 +1246,7 @@ def create_app(
 
     @app.post("/operations/run")
     async def run_automation() -> RedirectResponse:
-        if automation_runner_factory is None and not automation_settings.discovery_ready:
+        if automation_runner_factory is None and not source_control.ready:
             raise HTTPException(
                 status_code=409,
                 detail="Discovery configuration is not ready.",
@@ -1126,11 +1263,48 @@ def create_app(
     def integrations_center(
         tab: str = "overview", notice: str = "", error: str = ""
     ) -> HTMLResponse:
-        if tab not in {"overview", "security"}:
+        if tab not in {"overview", "setup", "security"}:
             raise HTTPException(status_code=404, detail="Integration tab not found")
+        brand = store.get_brand_profile()
+        connections_by_provider = {
+            profile.provider: profile for profile in store.list_brand_connections()
+        }
         integrations = integration_inventory(
-            discovery_config_path=discovery_config_path
+            discovery_config_path=active_source_path()
         )
+        overridden_integrations = []
+        for integration in integrations:
+            try:
+                provider = ConnectionProvider(integration.key)
+            except ValueError:
+                overridden_integrations.append(integration)
+                continue
+            profile = connections_by_provider.get(provider)
+            if profile is None:
+                overridden_integrations.append(integration)
+                continue
+            if provider in {ConnectionProvider.WORDPRESS, ConnectionProvider.BUFFER}:
+                state = (
+                    IntegrationState.GUARDED
+                    if bool(profile.settings.get("dry_run", True))
+                    else IntegrationState.LIVE
+                )
+                label = "Safe mode" if state == IntegrationState.GUARDED else "Live writes enabled"
+            elif provider == ConnectionProvider.IMAGES and not bool(
+                profile.settings.get("enabled", False)
+            ):
+                state, label = IntegrationState.OFF, "Optional · off"
+            else:
+                state, label = IntegrationState.READY, "Ready"
+            overridden_integrations.append(
+                replace(
+                    integration,
+                    state=state,
+                    state_label=label,
+                    summary=f"Using encrypted settings owned by {brand.name}.",
+                )
+            )
+        integrations = overridden_integrations
         ready_count = sum(
             item.state in {IntegrationState.READY, IntegrationState.GUARDED}
             for item in integrations
@@ -1166,13 +1340,18 @@ def create_app(
                 else ""
             )
             optional_note = " · optional" if integration.optional else ""
+            brand_override = (
+                "<span class='badge selected'>Brand-specific</span>"
+                if integration.key in {provider.value for provider in connections_by_provider}
+                else "<span class='badge'>Environment fallback</span>"
+            )
             cards.append(
                 "<article class='panel integration-card'>"
                 "<div class='integration-card-head'><div>"
                 f"<p class='eyebrow'>{escape(integration.key.upper())}{optional_note}</p>"
                 f"<h2>{escape(integration.name)}</h2></div>"
                 f"<span class='badge {state_badges[integration.state]}'>{escape(integration.state_label)}</span></div>"
-                f"<p>{escape(integration.purpose)}</p>"
+                f"<p>{escape(integration.purpose)}</p>{brand_override}"
                 f"<p class='muted'>{escape(integration.summary)}</p>"
                 f"<div class='integration-details'>{details}</div>"
                 "<details><summary>Administrator configuration names</summary>"
@@ -1185,6 +1364,7 @@ def create_app(
         tabs = (
             "<nav class='integration-tabs' aria-label='Integration Center sections'>"
             f"<a class='integration-tab{' active' if tab == 'overview' else ''}' href='/integrations?tab=overview'>Connections</a>"
+            f"<a class='integration-tab{' active' if tab == 'setup' else ''}' href='/integrations?tab=setup'>Brand setup</a>"
             f"<a class='integration-tab{' active' if tab == 'security' else ''}' href='/integrations?tab=security'>Secrets & tenancy</a></nav>"
         )
         feedback = (
@@ -1199,9 +1379,9 @@ def create_app(
         security_body = (
             "<div class='layout'><section class='panel'><p class='eyebrow'>SECRET BOUNDARY</p>"
             "<h2>Credentials do not belong in editorial data</h2>"
-            "<p>The local workspace reads credentials from its protected runtime environment. It stores articles, decisions, preferences, and delivery receipts—but never API keys or passwords.</p>"
+            "<p>Brand credentials are encrypted before they enter SQLite. The encryption key remains in the protected runtime environment and is never stored with the database.</p>"
             "<div class='security-principles'>"
-            "<article class='security-principle'><h3>Tenant isolation</h3><p class='muted'>Each organisation will receive separate secret references, provider connections, usage limits, and audit history.</p></article>"
+            "<article class='security-principle'><h3>Tenant isolation</h3><p class='muted'>Each brand has separate provider settings and encrypted credential payloads.</p></article>"
             "<article class='security-principle'><h3>Masked by design</h3><p class='muted'>The dashboard reports only whether a field exists. It does not return values, partial values, or fingerprints.</p></article>"
             "<article class='security-principle'><h3>Explicit writes</h3><p class='muted'>Connection tests do not post content. WordPress, Buffer, Discord, and paid generation retain separate action boundaries.</p></article>"
             "<article class='security-principle'><h3>Rotation ready</h3><p class='muted'>A future vault adapter can replace a credential without changing stored articles or integration records.</p></article>"
@@ -1211,8 +1391,55 @@ def create_app(
             "<p><a class='text-link' href='https://github.com/Infisical/infisical' target='_blank' rel='noopener'>Review Infisical →</a></p>"
             "<p><a class='text-link' href='https://github.com/openbao/openbao' target='_blank' rel='noopener'>Review OpenBao →</a></p>"
             "</section><section class='panel'><h2>Current storage rule</h2>"
-            "<p class='muted'>Environment-managed secrets for this single organisation. No credential editing is offered until encrypted, tenant-scoped storage exists.</p>"
+            f"<p class='muted'>{'Encrypted brand credential storage is available.' if credential_vault.ready else 'The credential vault is locked. Set WORKSPACE_SECRET_KEY before saving brand credentials.'}</p>"
             "</section></aside></div>"
+        )
+        def connection_settings(provider: ConnectionProvider) -> dict[str, str | bool]:
+            profile = connections_by_provider.get(provider)
+            return profile.settings if profile else {}
+
+        wordpress_settings = connection_settings(ConnectionProvider.WORDPRESS)
+        ollama_settings = connection_settings(ConnectionProvider.OLLAMA)
+        buffer_settings = connection_settings(ConnectionProvider.BUFFER)
+        image_settings = connection_settings(ConnectionProvider.IMAGES)
+        secret_hint = "Leave blank to keep the saved credential" if credential_vault.ready else "Vault locked by administrator"
+        disabled = "" if credential_vault.ready else " disabled"
+        setup_body = (
+            "<div class='section-head'><div><h2>Brand-owned connections</h2>"
+            f"<p class='muted'>Settings saved here apply only to {escape(brand.name)}. Blank secret fields never erase a saved credential.</p></div>"
+            f"<span class='badge {'selected' if credential_vault.ready else 'warning'}'>{'Vault ready' if credential_vault.ready else 'Vault locked'}</span></div>"
+            + (f"<div class='config-error'>{escape(credential_vault_error)}</div>" if credential_vault_error else "")
+            + "<section class='integration-grid'>"
+            "<article class='panel'><p class='eyebrow'>WORDPRESS</p><h2>Website drafts and media</h2>"
+            "<form method='post' action='/integrations/wordpress/configure'>"
+            f"<input name='base_url' type='url' required value='{escape(str(wordpress_settings.get('base_url', '')), quote=True)}' placeholder='https://example.com'>"
+            f"<input name='username' required value='{escape(str(wordpress_settings.get('username', '')), quote=True)}' placeholder='WordPress username'>"
+            f"<input name='secret' type='password' placeholder='{escape(secret_hint, quote=True)}'{disabled}>"
+            f"<label class='toggle-field'><input type='checkbox' name='dry_run' value='true'{' checked' if wordpress_settings.get('dry_run', True) else ''}> Preview only</label>"
+            f"<button type='submit'{disabled}>Save WordPress connection</button></form></article>"
+            "<article class='panel'><p class='eyebrow'>OLLAMA CLOUD</p><h2>Article and social writing</h2>"
+            "<form method='post' action='/integrations/ollama/configure'>"
+            f"<input name='base_url' type='url' required value='{escape(str(ollama_settings.get('base_url', '')), quote=True)}' placeholder='https://ollama.com'>"
+            f"<input name='writer_model' required value='{escape(str(ollama_settings.get('writer_model', '')), quote=True)}' placeholder='Article model'>"
+            f"<input name='social_model' value='{escape(str(ollama_settings.get('social_model', '')), quote=True)}' placeholder='Social model (optional)'>"
+            f"<input name='secret' type='password' placeholder='{escape(secret_hint, quote=True)}'{disabled}>"
+            f"<button type='submit'{disabled}>Save Ollama connection</button></form></article>"
+            "<article class='panel'><p class='eyebrow'>BUFFER</p><h2>Social publishing channels</h2>"
+            "<form method='post' action='/integrations/buffer/configure'>"
+            f"<input name='linkedin_channel_id' required value='{escape(str(buffer_settings.get('linkedin_channel_id', '')), quote=True)}' placeholder='LinkedIn channel ID'>"
+            f"<input name='x_channel_id' required value='{escape(str(buffer_settings.get('x_channel_id', '')), quote=True)}' placeholder='X channel ID'>"
+            f"<input name='facebook_channel_id' required value='{escape(str(buffer_settings.get('facebook_channel_id', '')), quote=True)}' placeholder='Facebook channel ID'>"
+            f"<input name='schedule_timezone' required value='{escape(str(buffer_settings.get('schedule_timezone', 'Africa/Johannesburg')), quote=True)}' placeholder='Africa/Johannesburg'>"
+            f"<input name='secret' type='password' placeholder='{escape(secret_hint, quote=True)}'{disabled}>"
+            f"<label class='toggle-field'><input type='checkbox' name='dry_run' value='true'{' checked' if buffer_settings.get('dry_run', True) else ''}> Preview only</label>"
+            f"<button type='submit'{disabled}>Save Buffer connection</button></form></article>"
+            "<article class='panel'><p class='eyebrow'>AI IMAGES</p><h2>Featured-image generation</h2>"
+            "<form method='post' action='/integrations/images/configure'>"
+            f"<input name='base_url' type='url' required value='{escape(str(image_settings.get('base_url', 'https://api.openai.com/v1')), quote=True)}' placeholder='https://api.openai.com/v1'>"
+            f"<input name='image_model' required value='{escape(str(image_settings.get('model', 'gpt-image-2')), quote=True)}' placeholder='gpt-image-2'>"
+            f"<input name='secret' type='password' placeholder='{escape(secret_hint, quote=True)}'{disabled}>"
+            f"<label class='toggle-field'><input type='checkbox' name='enabled' value='true'{' checked' if image_settings.get('enabled', False) else ''}> Allow explicit paid generation</label>"
+            f"<button type='submit'{disabled}>Save image connection</button></form></article></section>"
         )
         return render_page(
             "Integrations",
@@ -1224,8 +1451,141 @@ def create_app(
             f"<article class='stat-card'><small>Live writes</small><strong class='stat-value'>{live_count}</strong><span class='muted'>explicit actions enabled</span></article>"
             f"<article class='stat-card'><small>Needs setup</small><strong class='stat-value'>{setup_count}</strong><span class='muted'>administrator attention</span></article>"
             f"<article class='stat-card'><small>Optional services off</small><strong class='stat-value'>{optional_off_count}</strong><span class='muted'>no workflow blocker</span></article></section>"
-            f"{feedback}{tabs}{overview_body if tab == 'overview' else security_body}",
+            f"{feedback}{tabs}{overview_body if tab == 'overview' else setup_body if tab == 'setup' else security_body}",
             active="integrations",
+        )
+
+    @app.post("/integrations/{provider}/configure")
+    def configure_brand_integration(
+        provider: str,
+        base_url: str = Form(""),
+        username: str = Form(""),
+        writer_model: str = Form(""),
+        social_model: str = Form(""),
+        linkedin_channel_id: str = Form(""),
+        x_channel_id: str = Form(""),
+        facebook_channel_id: str = Form(""),
+        schedule_timezone: str = Form("Africa/Johannesburg"),
+        image_model: str = Form("gpt-image-2"),
+        dry_run: str = Form(""),
+        enabled: str = Form(""),
+        secret: str = Form(""),
+    ) -> RedirectResponse:
+        try:
+            selected_provider = ConnectionProvider(provider)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="Connection type not found.") from exc
+        if not credential_vault.ready:
+            raise HTTPException(
+                status_code=409,
+                detail="The credential vault must be configured before saving connections.",
+            )
+        if selected_provider not in {
+            ConnectionProvider.WORDPRESS,
+            ConnectionProvider.OLLAMA,
+            ConnectionProvider.BUFFER,
+            ConnectionProvider.IMAGES,
+        }:
+            raise HTTPException(status_code=404, detail="Connection type not found.")
+
+        existing = store.get_brand_connection(selected_provider)
+        existing_ciphertext = existing.encrypted_secrets if existing else ""
+        secret_name = {
+            ConnectionProvider.WORDPRESS: "application_password",
+            ConnectionProvider.OLLAMA: "api_key",
+            ConnectionProvider.BUFFER: "access_token",
+            ConnectionProvider.IMAGES: "api_key",
+        }[selected_provider]
+        if not secret.strip() and not existing_ciphertext:
+            raise HTTPException(
+                status_code=400,
+                detail="Enter the credential the first time this connection is saved.",
+            )
+
+        cleaned_base_url = base_url.strip().rstrip("/")
+        if selected_provider in {
+            ConnectionProvider.WORDPRESS,
+            ConnectionProvider.OLLAMA,
+            ConnectionProvider.IMAGES,
+        }:
+            parsed = urlsplit(cleaned_base_url)
+            local_wordpress = (
+                selected_provider == ConnectionProvider.WORDPRESS
+                and parsed.hostname in {"localhost", "127.0.0.1"}
+            )
+            if not parsed.hostname or (parsed.scheme != "https" and not local_wordpress):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Use a secure HTTPS provider address.",
+                )
+
+        if selected_provider == ConnectionProvider.WORDPRESS:
+            if not username.strip():
+                raise HTTPException(status_code=400, detail="Enter the WordPress username.")
+            settings: dict[str, str | bool] = {
+                "base_url": cleaned_base_url,
+                "username": username.strip(),
+                "dry_run": dry_run == "true",
+            }
+        elif selected_provider == ConnectionProvider.OLLAMA:
+            if not writer_model.strip():
+                raise HTTPException(status_code=400, detail="Enter the article model.")
+            settings = {
+                "base_url": cleaned_base_url,
+                "writer_model": writer_model.strip(),
+                "social_model": social_model.strip(),
+            }
+        elif selected_provider == ConnectionProvider.BUFFER:
+            channel_values = {
+                "linkedin_channel_id": linkedin_channel_id.strip(),
+                "x_channel_id": x_channel_id.strip(),
+                "facebook_channel_id": facebook_channel_id.strip(),
+            }
+            if not all(channel_values.values()):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Enter the LinkedIn, X, and Facebook channel IDs.",
+                )
+            try:
+                ZoneInfo(schedule_timezone.strip())
+            except ZoneInfoNotFoundError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Enter a valid timezone such as Africa/Johannesburg.",
+                ) from exc
+            settings = {
+                **channel_values,
+                "schedule_timezone": schedule_timezone.strip(),
+                "dry_run": dry_run == "true",
+            }
+        else:
+            if not image_model.strip():
+                raise HTTPException(status_code=400, detail="Enter the image model.")
+            settings = {
+                "provider": "openai",
+                "base_url": cleaned_base_url,
+                "model": image_model.strip(),
+                "enabled": enabled == "true",
+            }
+        try:
+            encrypted_secrets, secret_names = credential_vault.merge(
+                existing_ciphertext,
+                {secret_name: secret},
+            )
+            store.save_brand_connection(
+                BrandConnectionProfile(
+                    brand_id=store.get_active_brand_id(),
+                    provider=selected_provider,
+                    settings=settings,
+                    encrypted_secrets=encrypted_secrets,
+                    configured_secret_names=secret_names,
+                )
+            )
+        except SecretVaultError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/integrations?tab=setup&notice={quote(selected_provider.value.title())}%20connection%20saved",
+            status_code=303,
         )
 
     @app.post("/integrations/{integration_key}/test")
@@ -3664,9 +4024,17 @@ def create_app(
                 detail="Create the WordPress draft before confirming its public URL.",
             )
         try:
+            wordpress_profile = store.get_brand_connection(
+                ConnectionProvider.WORDPRESS
+            )
+            wordpress_base_url = (
+                str(wordpress_profile.settings.get("base_url", ""))
+                if wordpress_profile
+                else os.getenv("WORDPRESS_BASE_URL", "")
+            )
             normalized = normalize_public_article_url(
                 public_url,
-                os.getenv("WORDPRESS_BASE_URL", ""),
+                wordpress_base_url,
             )
             store.set_social_campaign_public_url(campaign.campaign_id, normalized)
         except ValueError as exc:

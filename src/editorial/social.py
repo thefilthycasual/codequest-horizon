@@ -155,14 +155,19 @@ class SocialCampaignGenerator:
         return campaign, posts
 
 
-def create_ollama_cloud_social_generator() -> SocialCampaignGenerator:
+def create_ollama_cloud_social_generator(
+    *, base_url: str | None = None, model: str | None = None, api_key: str | None = None
+) -> SocialCampaignGenerator:
     """Use the existing credentialed Ollama Cloud writer for social drafting."""
 
-    base_url = os.getenv("OLLAMA_BASE_URL", "").strip()
-    model = os.getenv("OLLAMA_MODEL_SOCIAL", "").strip() or os.getenv(
-        "OLLAMA_MODEL_WRITER", ""
+    base_url = (base_url if base_url is not None else os.getenv("OLLAMA_BASE_URL", "")).strip()
+    model = (
+        model
+        if model is not None
+        else os.getenv("OLLAMA_MODEL_SOCIAL", "").strip()
+        or os.getenv("OLLAMA_MODEL_WRITER", "").strip()
     ).strip()
-    api_key = os.getenv("OLLAMA_API_KEY", "").strip()
+    api_key = (api_key if api_key is not None else os.getenv("OLLAMA_API_KEY", "")).strip()
     host = (urlsplit(base_url).hostname or "").lower()
     if not base_url or urlsplit(base_url).scheme != "https" or host in {
         "localhost",
@@ -183,6 +188,7 @@ def create_ollama_cloud_social_generator() -> SocialCampaignGenerator:
         model=model,
         base_url=base_url,
         api_key_env="OLLAMA_API_KEY",
+        api_key=api_key,
         temperature=0.35,
         max_tokens=2_000,
     )

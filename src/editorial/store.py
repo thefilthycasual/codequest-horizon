@@ -13,6 +13,7 @@ from .models import (
     AutomationRun,
     AutomationRunStatus,
     BrandProfile,
+    BrandConnectionProfile,
     BrandRule,
     BrandRuleChannel,
     BufferDelivery,
@@ -38,6 +39,7 @@ from .models import (
     WordPressPublishingSettings,
     VisualBrandProfile,
     VisualPreferenceFeedback,
+    ConnectionProvider,
 )
 
 
@@ -225,6 +227,18 @@ class EditorialStore:
             )
             connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS brand_connections (
+                    brand_id TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    connection_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (brand_id, provider),
+                    FOREIGN KEY (brand_id) REFERENCES brands(brand_id) ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS discord_approval_requests (
                     request_id TEXT PRIMARY KEY,
                     content_item_id TEXT NOT NULL,
@@ -345,6 +359,42 @@ class EditorialStore:
                     synced_at TEXT NOT NULL
                 )
                 """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS brand_wordpress_categories (
+                    brand_id TEXT NOT NULL,
+                    category_id INTEGER NOT NULL,
+                    category_json TEXT NOT NULL,
+                    synced_at TEXT NOT NULL,
+                    PRIMARY KEY (brand_id, category_id),
+                    FOREIGN KEY (brand_id) REFERENCES brands(brand_id) ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS brand_wordpress_media (
+                    brand_id TEXT NOT NULL,
+                    media_id INTEGER NOT NULL,
+                    media_json TEXT NOT NULL,
+                    synced_at TEXT NOT NULL,
+                    PRIMARY KEY (brand_id, media_id),
+                    FOREIGN KEY (brand_id) REFERENCES brands(brand_id) ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                "INSERT OR IGNORE INTO brand_wordpress_categories "
+                "(brand_id, category_id, category_json, synced_at) "
+                "SELECT ?, category_id, category_json, synced_at FROM wordpress_categories",
+                (DEFAULT_BRAND_ID,),
+            )
+            connection.execute(
+                "INSERT OR IGNORE INTO brand_wordpress_media "
+                "(brand_id, media_id, media_json, synced_at) "
+                "SELECT ?, media_id, media_json, synced_at FROM wordpress_media",
+                (DEFAULT_BRAND_ID,),
             )
             connection.execute(
                 """
@@ -493,81 +543,115 @@ class EditorialStore:
             )
 
     def replace_wordpress_categories(
-        self, categories: list[WordPressCategory]
+        self, categories: list[WordPressCategory], brand_id: str | None = None
     ) -> None:
         """Atomically replace the cached taxonomy after a successful sync."""
 
         synced_at = _now()
+        selected_brand_id = brand_id or self.get_active_brand_id()
         with self._connect() as connection:
-            connection.execute("DELETE FROM wordpress_categories")
+            connection.execute(
+                "DELETE FROM brand_wordpress_categories WHERE brand_id = ?",
+                (selected_brand_id,),
+            )
             connection.executemany(
-                "INSERT INTO wordpress_categories "
-                "(category_id, category_json, synced_at) VALUES (?, ?, ?)",
+                "INSERT INTO brand_wordpress_categories "
+                "(brand_id, category_id, category_json, synced_at) VALUES (?, ?, ?, ?)",
                 [
-                    (category.category_id, category.model_dump_json(), synced_at)
+                    (
+                        selected_brand_id,
+                        category.category_id,
+                        category.model_dump_json(),
+                        synced_at,
+                    )
                     for category in categories
                 ],
             )
 
-    def list_wordpress_categories(self) -> list[WordPressCategory]:
+    def list_wordpress_categories(
+        self, brand_id: str | None = None
+    ) -> list[WordPressCategory]:
+        selected_brand_id = brand_id or self.get_active_brand_id()
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT category_json FROM wordpress_categories "
-                "ORDER BY json_extract(category_json, '$.name') COLLATE NOCASE"
+                "SELECT category_json FROM brand_wordpress_categories "
+                "WHERE brand_id = ? ORDER BY "
+                "json_extract(category_json, '$.name') COLLATE NOCASE",
+                (selected_brand_id,),
             ).fetchall()
         return [
             WordPressCategory.model_validate_json(row["category_json"])
             for row in rows
         ]
 
-    def wordpress_categories_synced_at(self) -> str | None:
+    def wordpress_categories_synced_at(self, brand_id: str | None = None) -> str | None:
+        selected_brand_id = brand_id or self.get_active_brand_id()
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT MAX(synced_at) AS synced_at FROM wordpress_categories"
+                "SELECT MAX(synced_at) AS synced_at FROM brand_wordpress_categories "
+                "WHERE brand_id = ?",
+                (selected_brand_id,),
             ).fetchone()
         return str(row["synced_at"]) if row and row["synced_at"] else None
 
-    def replace_wordpress_media(self, media: list[WordPressMediaItem]) -> None:
+    def replace_wordpress_media(
+        self, media: list[WordPressMediaItem], brand_id: str | None = None
+    ) -> None:
         """Atomically replace cached media after a successful library sync."""
 
         synced_at = _now()
+        selected_brand_id = brand_id or self.get_active_brand_id()
         with self._connect() as connection:
-            connection.execute("DELETE FROM wordpress_media")
+            connection.execute(
+                "DELETE FROM brand_wordpress_media WHERE brand_id = ?",
+                (selected_brand_id,),
+            )
             connection.executemany(
-                "INSERT INTO wordpress_media "
-                "(media_id, media_json, synced_at) VALUES (?, ?, ?)",
+                "INSERT INTO brand_wordpress_media "
+                "(brand_id, media_id, media_json, synced_at) VALUES (?, ?, ?, ?)",
                 [
-                    (item.media_id, item.model_dump_json(), synced_at)
+                    (selected_brand_id, item.media_id, item.model_dump_json(), synced_at)
                     for item in media
                 ],
             )
 
-    def upsert_wordpress_media(self, item: WordPressMediaItem) -> None:
+    def upsert_wordpress_media(
+        self, item: WordPressMediaItem, brand_id: str | None = None
+    ) -> None:
         synced_at = _now()
+        selected_brand_id = brand_id or self.get_active_brand_id()
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO wordpress_media (media_id, media_json, synced_at) "
-                "VALUES (?, ?, ?) ON CONFLICT(media_id) DO UPDATE SET "
+                "INSERT INTO brand_wordpress_media "
+                "(brand_id, media_id, media_json, synced_at) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(brand_id, media_id) DO UPDATE SET "
                 "media_json = excluded.media_json, synced_at = excluded.synced_at",
-                (item.media_id, item.model_dump_json(), synced_at),
+                (selected_brand_id, item.media_id, item.model_dump_json(), synced_at),
             )
 
-    def list_wordpress_media(self) -> list[WordPressMediaItem]:
+    def list_wordpress_media(
+        self, brand_id: str | None = None
+    ) -> list[WordPressMediaItem]:
+        selected_brand_id = brand_id or self.get_active_brand_id()
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT media_json FROM wordpress_media "
+                "SELECT media_json FROM brand_wordpress_media WHERE brand_id = ? "
                 "ORDER BY COALESCE(json_extract(media_json, '$.uploaded_at'), '') DESC, "
-                "media_id DESC"
+                "media_id DESC",
+                (selected_brand_id,),
             ).fetchall()
         return [
             WordPressMediaItem.model_validate_json(row["media_json"])
             for row in rows
         ]
 
-    def wordpress_media_synced_at(self) -> str | None:
+    def wordpress_media_synced_at(self, brand_id: str | None = None) -> str | None:
+        selected_brand_id = brand_id or self.get_active_brand_id()
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT MAX(synced_at) AS synced_at FROM wordpress_media"
+                "SELECT MAX(synced_at) AS synced_at FROM brand_wordpress_media "
+                "WHERE brand_id = ?",
+                (selected_brand_id,),
             ).fetchone()
         return str(row["synced_at"]) if row and row["synced_at"] else None
 
@@ -913,6 +997,61 @@ class EditorialStore:
                 ),
             )
         return profile
+
+    def save_brand_connection(
+        self, profile: BrandConnectionProfile
+    ) -> BrandConnectionProfile:
+        profile = BrandConnectionProfile.model_validate(profile.model_dump())
+        self.get_brand_profile(profile.brand_id)
+        profile.updated_at = datetime.now(timezone.utc)
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO brand_connections "
+                "(brand_id, provider, connection_json, updated_at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(brand_id, provider) DO UPDATE SET "
+                "connection_json = excluded.connection_json, updated_at = excluded.updated_at",
+                (
+                    profile.brand_id,
+                    profile.provider.value,
+                    profile.model_dump_json(),
+                    profile.updated_at.isoformat(),
+                ),
+            )
+        return profile
+
+    def get_brand_connection(
+        self,
+        provider: ConnectionProvider | str,
+        brand_id: str | None = None,
+    ) -> BrandConnectionProfile | None:
+        selected_brand_id = brand_id or self.get_active_brand_id()
+        selected_provider = ConnectionProvider(provider)
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT connection_json FROM brand_connections "
+                "WHERE brand_id = ? AND provider = ?",
+                (selected_brand_id, selected_provider.value),
+            ).fetchone()
+        return (
+            BrandConnectionProfile.model_validate_json(row["connection_json"])
+            if row
+            else None
+        )
+
+    def list_brand_connections(
+        self, brand_id: str | None = None
+    ) -> list[BrandConnectionProfile]:
+        selected_brand_id = brand_id or self.get_active_brand_id()
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT connection_json FROM brand_connections WHERE brand_id = ? "
+                "ORDER BY provider",
+                (selected_brand_id,),
+            ).fetchall()
+        return [
+            BrandConnectionProfile.model_validate_json(row["connection_json"])
+            for row in rows
+        ]
 
     def save_packet(
         self,
