@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Collection
 
 from .models import (
     ArticleDraft,
@@ -13,7 +14,33 @@ from .models import (
 )
 
 
-def evaluate_draft(packet: EditorialPacket, draft: ArticleDraft) -> DraftQualityReport:
+def pending_required_facts(
+    packet: EditorialPacket,
+    draft: ArticleDraft,
+    confirmed_facts: Collection[str] = (),
+) -> list[str]:
+    """Return facts that are neither textually represented nor human-confirmed."""
+
+    paragraphs = [paragraph for section in draft.sections for paragraph in section.paragraphs]
+    draft_text = " ".join(
+        [draft.title, draft.dek] + [paragraph.text for paragraph in paragraphs]
+    )
+    draft_words = _meaningful_words(draft_text)
+    confirmed = set(confirmed_facts)
+    return [
+        fact
+        for fact in packet.brief.required_facts
+        if fact not in confirmed
+        and _meaningful_words(fact)
+        and not _meaningful_words(fact).issubset(draft_words)
+    ]
+
+
+def evaluate_draft(
+    packet: EditorialPacket,
+    draft: ArticleDraft,
+    confirmed_facts: Collection[str] = (),
+) -> DraftQualityReport:
     checks: list[DraftQualityCheck] = []
     paragraphs = [paragraph for section in draft.sections for paragraph in section.paragraphs]
     used_sources = {source_id for paragraph in paragraphs for source_id in paragraph.source_ids}
@@ -116,20 +143,16 @@ def evaluate_draft(packet: EditorialPacket, draft: ArticleDraft) -> DraftQuality
         [draft.title, draft.dek]
         + [paragraph.text for paragraph in paragraphs]
     ).casefold()
-    missing_facts = [
-        fact
-        for fact in packet.brief.required_facts
-        if _meaningful_words(fact) and not _meaningful_words(fact).issubset(_meaningful_words(draft_text))
-    ]
+    missing_facts = pending_required_facts(packet, draft, confirmed_facts)
     checks.append(
         DraftQualityCheck(
             key="required_facts",
             label="Required facts",
             status=QualityCheckStatus.WARNING if missing_facts else QualityCheckStatus.PASS,
             detail=(
-                f"Manually confirm {len(missing_facts)} required fact(s) that may be paraphrased or missing."
+                "Review these required facts: " + " | ".join(missing_facts)
                 if missing_facts
-                else "All required-fact terms are represented in the draft."
+                else "All required facts are represented in the draft or explicitly confirmed."
             ),
         )
     )

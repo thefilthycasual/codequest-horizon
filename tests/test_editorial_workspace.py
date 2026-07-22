@@ -216,6 +216,40 @@ def test_workspace_generates_and_renders_unpublished_draft(tmp_path) -> None:
     assert "<script>grounded" not in detail.text
 
 
+def test_workspace_lists_and_confirms_required_facts(tmp_path) -> None:
+    db_path = tmp_path / "editorial.sqlite3"
+    packet = _packet()
+    store = EditorialStore(db_path)
+    store.save_packet(packet)
+    store.set_status(packet.brief.content_item_id, "selected")
+    client = TestClient(create_app(db_path, draft_generator_factory=_StubDraftGenerator))
+    item_path = f"/items/{packet.brief.content_item_id}"
+
+    client.post(f"{item_path}/draft")
+    draft = store.get_latest_draft(packet.brief.content_item_id)
+    review = client.get(f"{item_path}?tab=review")
+
+    assert "Required fact review" in review.text
+    assert "A developer tool launches a public beta" in review.text
+    assert "S1:" in review.text
+    assert "Confirm selected facts" in review.text
+
+    response = client.post(
+        f"{item_path}/facts/confirm",
+        data={"draft_id": draft.draft_id, "fact_index": "0"},
+        follow_redirects=False,
+    )
+    completed_review = client.get(f"{item_path}?tab=review")
+
+    assert response.status_code == 303
+    assert store.list_confirmed_required_facts(draft.draft_id) == {
+        "A developer tool launches a public beta"
+    }
+    assert "Every required fact is represented" in completed_review.text
+    assert "explicitly confirmed" in completed_review.text
+    assert "does not approve the article" in completed_review.text
+
+
 def test_story_workspace_tabs_keep_each_stage_focused(tmp_path) -> None:
     db_path = tmp_path / "editorial.sqlite3"
     packet = _packet()

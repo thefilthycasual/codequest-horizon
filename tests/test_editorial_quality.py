@@ -10,7 +10,7 @@ from src.editorial.models import (
     DraftSection,
     QualityCheckStatus,
 )
-from src.editorial.quality import evaluate_draft
+from src.editorial.quality import evaluate_draft, pending_required_facts
 from src.editorial.store import EditorialStore
 
 from test_editorial_workspace import _packet
@@ -61,6 +61,50 @@ def test_quality_report_blocks_a_thin_article() -> None:
 
     assert depth.status == QualityCheckStatus.BLOCK
     assert report.can_approve is False
+
+
+def test_required_fact_confirmation_is_scoped_to_exact_draft(tmp_path) -> None:
+    store = EditorialStore(tmp_path / "editorial.sqlite3")
+    packet = _packet()
+    first = _draft(packet)
+    store.save_packet(packet)
+    store.save_draft(first)
+
+    pending = pending_required_facts(packet, first)
+    assert pending == ["A developer tool launches a public beta"]
+
+    store.confirm_required_facts(packet.brief.content_item_id, first.draft_id, pending)
+    confirmed = store.list_confirmed_required_facts(first.draft_id)
+    report = evaluate_draft(packet, first, confirmed)
+    required_facts = next(check for check in report.checks if check.key == "required_facts")
+
+    assert required_facts.status == QualityCheckStatus.PASS
+    assert "explicitly confirmed" in required_facts.detail
+
+    second = _draft(packet, title="Another grounded review draft")
+    second.created_at = first.created_at + timedelta(seconds=1)
+    store.save_draft(second)
+
+    assert store.list_confirmed_required_facts(second.draft_id) == set()
+    assert pending_required_facts(packet, second) == pending
+
+
+def test_store_rejects_fact_confirmation_for_stale_draft(tmp_path) -> None:
+    store = EditorialStore(tmp_path / "editorial.sqlite3")
+    packet = _packet()
+    first = _draft(packet, title="First")
+    second = _draft(packet, title="Second")
+    second.created_at = first.created_at + timedelta(seconds=1)
+    store.save_packet(packet)
+    store.save_draft(first)
+    store.save_draft(second)
+
+    with pytest.raises(ValueError, match="latest draft version"):
+        store.confirm_required_facts(
+            packet.brief.content_item_id,
+            first.draft_id,
+            [packet.brief.required_facts[0]],
+        )
 
 
 def test_persisted_review_queues_latest_draft_for_discord(tmp_path) -> None:

@@ -58,7 +58,7 @@ from .models import (
     WordPressDeliveryStatus,
 )
 from .preferences import build_preference_profile
-from .quality import evaluate_draft
+from .quality import evaluate_draft, pending_required_facts
 from .social import (
     PLATFORM_LIMITS,
     SocialCampaignGenerator,
@@ -122,6 +122,9 @@ font:12px/1.6 ui-monospace,SFMono-Regular,monospace;color:var(--muted);backgroun
 grid-template-columns:auto 1fr;gap:10px;padding:12px 0;border-top:1px solid var(--line)}.quality-check:first-of-type{border-top:0}
 .quality-check p{margin:0}.quality-check small{display:block;color:var(--muted)}.decision{background:var(--accent-soft);
 border:1px solid #ffd2b6;border-radius:14px;padding:14px}.empty{text-align:center;padding:76px 24px;background:#fff}
+.fact-list{display:grid;gap:10px;margin:16px 0}.fact-option{display:grid;grid-template-columns:auto 1fr;gap:10px;
+align-items:start;padding:13px;border:1px solid var(--line);border-radius:12px;background:#fafafa}.fact-option input{width:auto;margin-top:5px}
+.evidence-links{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 18px}.evidence-links a{color:#c75b17;font-weight:700}
 @media(max-width:820px){.layout{grid-template-columns:1fr}.nav{gap:12px}.horizon-chip{display:none}h1{font-size:35px}
 .shell{padding-top:32px}}@media(max-width:560px){.top{padding:0 16px}.nav a{font-size:13px}.shell{padding-left:16px;
 padding-right:16px}.panel,.card{padding:19px}.panel.draft{padding:22px}h1{font-size:31px}}
@@ -589,7 +592,21 @@ def create_app(
             if social_campaign
             else []
         )
-        quality_report = evaluate_draft(packet, latest_draft) if latest_draft else None
+        confirmed_facts = (
+            store.list_confirmed_required_facts(latest_draft.draft_id)
+            if latest_draft
+            else set()
+        )
+        pending_facts = (
+            pending_required_facts(packet, latest_draft, confirmed_facts)
+            if latest_draft
+            else []
+        )
+        quality_report = (
+            evaluate_draft(packet, latest_draft, confirmed_facts)
+            if latest_draft
+            else None
+        )
         latest_decision = store.get_latest_decision(content_item_id)
         decision_for_latest = (
             latest_decision
@@ -701,6 +718,41 @@ def create_app(
             if quality_report
             else "<section class='panel'><h2>Quality gate</h2><p class='muted'>Generate a draft to run deterministic checks.</p></section>"
         )
+        if latest_draft:
+            evidence_links = "".join(
+                f"<a href='{escape(str(source.url), quote=True)}' target='_blank' rel='noopener'>"
+                f"S{index}: {escape(source.title)}</a>"
+                for index, source in enumerate(packet.evidence.sources, start=1)
+            )
+            pending_fact_options = "".join(
+                "<label class='fact-option'>"
+                f"<input type='checkbox' name='fact_index' value='{index}'>"
+                f"<span>{escape(fact)}</span></label>"
+                for index, fact in enumerate(brief.required_facts)
+                if fact in pending_facts
+            )
+            if pending_fact_options:
+                fact_review_body = (
+                    "<p>Check each statement against the saved sources, then confirm only the facts you verified.</p>"
+                    f"<div class='evidence-links'>{evidence_links}</div>"
+                    f"<form method='post' action='/items/{encoded_id}/facts/confirm'>"
+                    f"<input type='hidden' name='draft_id' value='{escape(latest_draft.draft_id, quote=True)}'>"
+                    f"<div class='fact-list'>{pending_fact_options}</div>"
+                    "<button type='submit'>Confirm selected facts</button></form>"
+                )
+            else:
+                fact_review_body = (
+                    "<p><span class='badge pass'>Complete</span></p>"
+                    "<p>Every required fact is represented in this draft or has been explicitly checked.</p>"
+                )
+            fact_confirmation_panel = (
+                "<section class='panel'><h2>Required fact review</h2>"
+                f"{fact_review_body}"
+                "<small class='muted'>Fact confirmation applies only to this draft version and does not approve the article.</small>"
+                "</section>"
+            )
+        else:
+            fact_confirmation_panel = ""
         decision_panel = (
             "<section class='panel'><h2>Editorial decision</h2>"
             f"{_decision_html(decision_for_latest)}{approval_actions}</section>"
@@ -1021,7 +1073,7 @@ def create_app(
                 f"{_draft_html(latest_draft, edit_href)}</section><aside class='stack'>{versions_panel}</aside></div>"
             ),
             "review": (
-                f"<div class='layout'><section class='stack'>{quality_panel}</section>"
+                f"<div class='layout'><section class='stack'>{quality_panel}{fact_confirmation_panel}</section>"
                 "<aside class='stack'><section class='panel'><h2>Review state</h2>"
                 f"{review_controls}</section>{decision_panel}</aside></div>"
             ),
@@ -1290,11 +1342,39 @@ def create_app(
                 draft_id=draft.draft_id,
                 outcome=DecisionOutcome(outcome),
                 notes=notes.strip(),
-                quality_report=evaluate_draft(record.packet, draft),
+                quality_report=evaluate_draft(
+                    record.packet,
+                    draft,
+                    store.list_confirmed_required_facts(draft.draft_id),
+                ),
             )
             store.record_decision(decision)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/items/{quote(content_item_id, safe='')}?tab=review", status_code=303
+        )
+
+    @app.post("/items/{content_item_id}/facts/confirm")
+    def confirm_facts(
+        content_item_id: str,
+        draft_id: str = Form(),
+        fact_index: list[int] = Form(default=[]),
+    ) -> RedirectResponse:
+        record = store.get_item(content_item_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Editorial item not found")
+        facts = record.packet.brief.required_facts
+        if not fact_index or any(index < 0 or index >= len(facts) for index in fact_index):
+            raise HTTPException(status_code=400, detail="Select valid required facts to confirm.")
+        try:
+            store.confirm_required_facts(
+                content_item_id,
+                draft_id,
+                [facts[index] for index in dict.fromkeys(fact_index)],
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         return RedirectResponse(
             f"/items/{quote(content_item_id, safe='')}?tab=review", status_code=303
         )
@@ -1310,7 +1390,9 @@ def create_app(
                 status_code=409,
                 detail="Only a reviewed draft can be shared with Discord.",
             )
-        if not evaluate_draft(record.packet, draft).can_approve:
+        confirmed_facts = store.list_confirmed_required_facts(draft.draft_id)
+        quality_report = evaluate_draft(record.packet, draft, confirmed_facts)
+        if not quality_report.can_approve:
             raise HTTPException(status_code=409, detail="Resolve blocking quality issues first.")
         request = DiscordApprovalRequest(
             content_item_id=content_item_id,
@@ -1321,7 +1403,7 @@ def create_app(
             channel_id, message_id = await bridge_factory().send_request(
                 request,
                 draft,
-                evaluate_draft(record.packet, draft),
+                quality_report,
             )
             store.update_discord_delivery(request.request_id, channel_id, message_id)
         except (KeyError, ValueError) as exc:

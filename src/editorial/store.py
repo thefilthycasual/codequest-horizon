@@ -166,6 +166,19 @@ class EditorialStore:
             )
             connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS draft_fact_confirmations (
+                    draft_id TEXT NOT NULL,
+                    fact_text TEXT NOT NULL,
+                    confirmed_at TEXT NOT NULL,
+                    PRIMARY KEY (draft_id, fact_text),
+                    FOREIGN KEY (draft_id)
+                        REFERENCES editorial_drafts(draft_id)
+                        ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS editorial_decisions (
                     decision_id TEXT PRIMARY KEY,
                     content_item_id TEXT NOT NULL,
@@ -556,6 +569,39 @@ class EditorialStore:
                 (content_item_id,),
             ).fetchall()
         return [ArticleDraft.model_validate_json(row["draft_json"]) for row in rows]
+
+    def list_confirmed_required_facts(self, draft_id: str) -> set[str]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT fact_text FROM draft_fact_confirmations WHERE draft_id = ?",
+                (draft_id,),
+            ).fetchall()
+        return {row["fact_text"] for row in rows}
+
+    def confirm_required_facts(
+        self,
+        content_item_id: str,
+        draft_id: str,
+        facts: list[str],
+    ) -> None:
+        """Record human fact checks for the exact latest draft version."""
+
+        record = self.get_item(content_item_id)
+        latest = self.get_latest_draft(content_item_id)
+        if record is None:
+            raise KeyError(content_item_id)
+        if latest is None or latest.draft_id != draft_id:
+            raise ValueError("Facts can only be confirmed for the latest draft version.")
+        allowed = set(record.packet.brief.required_facts)
+        unknown = set(facts) - allowed
+        if unknown:
+            raise ValueError("A submitted fact is not part of this editorial brief.")
+        with self._connect() as connection:
+            connection.executemany(
+                "INSERT INTO draft_fact_confirmations (draft_id, fact_text, confirmed_at) "
+                "VALUES (?, ?, ?) ON CONFLICT(draft_id, fact_text) DO NOTHING",
+                [(draft_id, fact, _now()) for fact in dict.fromkeys(facts)],
+            )
 
     def create_social_campaign(
         self, campaign: SocialCampaign, posts: list[SocialPostDraft]
