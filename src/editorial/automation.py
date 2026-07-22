@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -73,6 +74,41 @@ class AutomationConfig:
 
 Discover = Callable[[int], Awaitable[list[ContentItem]]]
 
+_CODEQUEST_TERMS = {
+    "agent",
+    "api",
+    "coding",
+    "compiler",
+    "database",
+    "developer",
+    "framework",
+    "github",
+    "ide",
+    "library",
+    "llm",
+    "model",
+    "programming",
+    "python",
+    "sdk",
+}
+_CODEQUEST_PHRASES = ("artificial intelligence", "developer tool", "open source")
+
+
+def editorial_relevance(item: ContentItem) -> int:
+    """Return a transparent CodeQuest-audience relevance signal."""
+
+    text = " ".join([item.title, *(str(tag) for tag in item.ai_tags)]).lower()
+    tokens = set(re.findall(r"[a-z0-9+#.-]+", text))
+    matches = sum(term in tokens for term in _CODEQUEST_TERMS)
+    matches += sum(phrase in text for phrase in _CODEQUEST_PHRASES)
+    return matches
+
+
+def _priority(item: ContentItem) -> tuple[float, float, datetime]:
+    relevance = editorial_relevance(item)
+    combined = (item.ai_score or 0) + min(relevance, 4) * 1.5
+    return combined, item.ai_score or 0, item.published_at
+
 
 class EditorialAutomationRunner:
     """Run discovery once and persist every meaningful stage."""
@@ -96,25 +132,27 @@ class EditorialAutomationRunner:
             run.stage = "discovering"
             self.store.save_automation_run(run)
             candidates = await self.discover(self.config.lookback_hours)
-            candidates = sorted(
-                candidates,
-                key=lambda item: (item.ai_score or 0, item.published_at),
-                reverse=True,
-            )[: self.config.max_candidates]
+            candidates = sorted(candidates, key=_priority, reverse=True)
             run.discovered_count = len(candidates)
 
             run.stage = "importing"
             self.store.save_automation_run(run)
-            imported_ids: list[str] = []
+            imported: list[tuple[str, int]] = []
             for item in candidates:
                 if self.store.get_item(item.id) is not None:
                     run.skipped_count += 1
                     continue
+                if len(imported) >= self.config.max_candidates:
+                    break
                 self.store.save_packet(build_editorial_packet(item))
-                imported_ids.append(item.id)
+                imported.append((item.id, editorial_relevance(item)))
                 run.imported_count += 1
 
-            selected_ids = imported_ids[: self.config.auto_select_count]
+            selected_ids = [
+                content_item_id
+                for content_item_id, relevance in imported
+                if relevance > 0
+            ][: self.config.auto_select_count]
             for content_item_id in selected_ids:
                 self.store.set_status(content_item_id, "selected")
                 run.selected_count += 1
@@ -155,6 +193,13 @@ class EditorialAutomationRunner:
             run.finished_at = datetime.now(timezone.utc)
             self.store.save_automation_run(run)
             return run
+        except asyncio.CancelledError:
+            run.status = AutomationRunStatus.FAILED
+            run.stage = "interrupted"
+            run.error_message = "The automation run was stopped before it finished."
+            run.finished_at = datetime.now(timezone.utc)
+            self.store.save_automation_run(run)
+            raise
 
 
 def create_automation_runner(

@@ -26,6 +26,7 @@ def _item(number: int, score: float) -> ContentItem:
         published_at=datetime.now(timezone.utc) - timedelta(minutes=number),
         ai_score=score,
         ai_reason="Useful developer tooling update.",
+        ai_tags=["developer", "tooling"],
     )
 
 
@@ -61,16 +62,43 @@ def test_automation_is_bounded_selects_top_story_and_records_duplicates(tmp_path
     )
     first = asyncio.run(runner.run_once())
     assert first.status == AutomationRunStatus.COMPLETED
-    assert first.discovered_count == 2
+    assert first.discovered_count == 3
     assert first.imported_count == 2
     assert first.selected_count == 1
     assert store.get_item("rss:automation:2").status == "selected"
     assert store.get_item("rss:automation:3").status == "candidate"
 
     second = asyncio.run(runner.run_once())
-    assert second.imported_count == 0
+    assert second.imported_count == 1
     assert second.skipped_count == 2
     assert len(store.list_automation_runs()) == 2
+
+    third = asyncio.run(runner.run_once())
+    assert third.imported_count == 0
+    assert third.skipped_count == 3
+
+
+def test_automation_does_not_auto_select_an_off_topic_high_score(tmp_path) -> None:
+    store = EditorialStore(tmp_path / "editorial.sqlite3")
+    off_topic = _item(1, 10)
+    off_topic.title = "A major development in pure mathematics"
+    off_topic.ai_tags = ["mathematics", "research"]
+    relevant = _item(2, 7)
+    relevant.title = "New open source Python developer tool"
+
+    async def discover(_hours: int):
+        return [off_topic, relevant]
+
+    run = asyncio.run(
+        EditorialAutomationRunner(
+            store,
+            AutomationConfig(max_candidates=2, auto_select_count=1),
+            discover,
+        ).run_once()
+    )
+    assert run.selected_count == 1
+    assert store.get_item(relevant.id).status == "selected"
+    assert store.get_item(off_topic.id).status == "candidate"
 
 
 def test_automation_can_prepare_unapproved_draft_when_explicitly_enabled(tmp_path) -> None:
@@ -107,6 +135,32 @@ def test_automation_failure_is_durable_and_overlap_is_blocked(tmp_path) -> None:
     store.start_automation_run("worker-a")
     with pytest.raises(ValueError, match="already in progress"):
         store.start_automation_run("worker-b")
+
+
+def test_cancelled_automation_is_recorded_as_interrupted(tmp_path) -> None:
+    store = EditorialStore(tmp_path / "editorial.sqlite3")
+
+    async def scenario():
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def discover(_hours: int):
+            started.set()
+            await release.wait()
+            return []
+
+        task = asyncio.create_task(
+            EditorialAutomationRunner(store, AutomationConfig(), discover).run_once()
+        )
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(scenario())
+    run = store.list_automation_runs()[0]
+    assert run.status == AutomationRunStatus.FAILED
+    assert run.stage == "interrupted"
 
 
 def test_operations_page_runs_injected_pipeline(tmp_path) -> None:
