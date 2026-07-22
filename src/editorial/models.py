@@ -34,6 +34,74 @@ class PreferenceScope(str, Enum):
     GLOBAL = "global"
 
 
+class BrandRuleChannel(str, Enum):
+    """Generation surface controlled by a brand rule."""
+
+    ARTICLE = "article"
+    LINKEDIN = "linkedin"
+    X = "x"
+    FACEBOOK = "facebook"
+
+
+class Organization(BaseModel):
+    """Top-level tenant boundary prepared for the future SaaS product."""
+
+    organization_id: str = Field(default_factory=lambda: f"org_{uuid4().hex}")
+    name: str = Field(min_length=1)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class BrandProfile(BaseModel):
+    """Approved brand context supplied to future content generation."""
+
+    brand_id: str = Field(default_factory=lambda: f"brand_{uuid4().hex}")
+    organization_id: str
+    name: str = Field(min_length=1)
+    website_url: str = ""
+    description: str = ""
+    audience: str = ""
+    positioning: str = ""
+    voice_summary: str = ""
+    default_cta: str = ""
+    prohibited_terms: list[str] = Field(default_factory=list)
+    default_language: str = "en"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def prompt_context(self) -> str:
+        fields = [
+            ("Brand", self.name),
+            ("Website", self.website_url),
+            ("Brand description", self.description),
+            ("Audience", self.audience),
+            ("Positioning", self.positioning),
+            ("Voice", self.voice_summary),
+            ("Default call to action", self.default_cta),
+            ("Prohibited terms", ", ".join(self.prohibited_terms)),
+            ("Default language", self.default_language),
+        ]
+        populated = [f"- {label}: {value}" for label, value in fields if value]
+        return "\n".join(populated) if populated else "No brand context has been configured yet."
+
+
+class BrandRule(BaseModel):
+    """One approved, versionable instruction owned by a brand."""
+
+    rule_id: str = Field(default_factory=lambda: f"brand_rule_{uuid4().hex}")
+    brand_id: str
+    channel: BrandRuleChannel = BrandRuleChannel.ARTICLE
+    signal: PreferenceSignal
+    dimension: str = Field(min_length=1)
+    instruction: str = Field(min_length=1)
+    article_type: ArticleType | None = None
+    priority: int = Field(default=50, ge=0, le=100)
+    enabled: bool = True
+    source: str = "manual"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class EvidenceSource(BaseModel):
     """One source and the material it contributes to an editorial brief."""
 
@@ -98,21 +166,30 @@ class EditorialPreferenceProfile(BaseModel):
 
     article_type: ArticleType | None = None
     content_item_id: str | None = None
+    brand_profile: BrandProfile | None = None
     rules: list[PreferenceRule] = Field(default_factory=list)
     generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     def writer_instructions(self) -> str:
-        if not self.rules:
+        if not self.rules and self.brand_profile is None:
             return "No explicit editorial preferences have been recorded yet."
-        lines = [
-            "Editorial preferences from explicit human feedback:",
-            *(
-                f"- {rule.signal.value.title()} [{rule.dimension.replace('_', ' ')}]: "
-                f"{rule.instruction}"
-                for rule in self.rules
-            ),
-            "Use these as writing constraints, but never let them override factual evidence.",
-        ]
+        lines = []
+        if self.brand_profile is not None:
+            lines.extend(["Approved brand context:", self.brand_profile.prompt_context()])
+        if self.rules:
+            lines.extend(
+                [
+                    "Editorial preferences from explicit human feedback and approved brand rules:",
+                    *(
+                        f"- {rule.signal.value.title()} [{rule.dimension.replace('_', ' ')}]: "
+                        f"{rule.instruction}"
+                        for rule in self.rules
+                    ),
+                ]
+            )
+        lines.append(
+            "Use these as writing constraints, but never let them override factual evidence."
+        )
         return "\n".join(lines)
 
 
@@ -139,6 +216,7 @@ class ArticleDraft(BaseModel):
     dek: str = Field(min_length=1)
     sections: list[DraftSection] = Field(min_length=1)
     source_map: dict[str, HttpUrl]
+    brand_profile_snapshot: BrandProfile | None = None
     preference_rules: list[PreferenceRule] = Field(default_factory=list)
     revision_notes: list[str] = Field(default_factory=list)
     parent_draft_id: str | None = None

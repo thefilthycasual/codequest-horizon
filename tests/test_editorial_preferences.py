@@ -2,9 +2,14 @@ import sqlite3
 from datetime import datetime, timezone
 
 from src.editorial.briefing import build_editorial_packet
-from src.editorial.models import ArticleType
+from src.editorial.models import (
+    ArticleType,
+    BrandRule,
+    BrandRuleChannel,
+    PreferenceSignal,
+)
 from src.editorial.preferences import build_preference_profile
-from src.editorial.store import EditorialStore
+from src.editorial.store import DEFAULT_BRAND_ID, EditorialStore
 from src.models import ContentItem, SourceType
 
 
@@ -59,6 +64,68 @@ def test_profile_deduplicates_repeated_feedback_and_exports_prompt(tmp_path) -> 
     assert profile.rules[0].evidence_count == 2
     assert "Prefer [structure]" in profile.writer_instructions()
     assert "never let them override factual evidence" in profile.writer_instructions()
+
+
+def test_brand_profile_and_approved_rules_feed_generation(tmp_path) -> None:
+    store = EditorialStore(tmp_path / "editorial.sqlite3")
+    brand = store.get_brand_profile()
+    brand.description = "CodeQuest helps developers understand practical software changes."
+    brand.audience = "Developers and coding learners"
+    store.save_brand_profile(brand)
+    global_rule = store.add_brand_rule(
+        BrandRule(
+            brand_id=DEFAULT_BRAND_ID,
+            channel=BrandRuleChannel.ARTICLE,
+            signal=PreferenceSignal.AVOID,
+            dimension="tone",
+            instruction="Avoid vague claims about revolutionary changes.",
+            priority=80,
+        )
+    )
+    store.add_brand_rule(
+        BrandRule(
+            brand_id=DEFAULT_BRAND_ID,
+            channel=BrandRuleChannel.ARTICLE,
+            signal=PreferenceSignal.PREFER,
+            dimension="structure",
+            instruction="Include a practical migration checklist.",
+            article_type=ArticleType.TUTORIAL,
+        )
+    )
+
+    news = build_preference_profile(store, ArticleType.NEWS_REPORT)
+    tutorial = build_preference_profile(store, ArticleType.TUTORIAL)
+
+    assert news.brand_profile.description.startswith("CodeQuest helps")
+    assert [rule.instruction for rule in news.rules] == [global_rule.instruction]
+    assert [rule.dimension for rule in tutorial.rules] == ["tone", "structure"]
+    assert "Approved brand context" in news.writer_instructions()
+    assert "Developers and coding learners" in news.writer_instructions()
+
+    global_rule.enabled = False
+    store.save_brand_rule(global_rule)
+
+    assert build_preference_profile(store, ArticleType.NEWS_REPORT).rules == []
+
+
+def test_social_brand_rules_join_learned_platform_preferences(tmp_path) -> None:
+    store = EditorialStore(tmp_path / "editorial.sqlite3")
+    store.add_brand_rule(
+        BrandRule(
+            brand_id=DEFAULT_BRAND_ID,
+            channel=BrandRuleChannel.LINKEDIN,
+            signal=PreferenceSignal.PREFER,
+            dimension="tone",
+            instruction="Open with a concrete developer consequence.",
+        )
+    )
+
+    preferences = store.list_social_preferences()
+
+    assert preferences["linkedin"] == [
+        "Prefer: Open with a concrete developer consequence."
+    ]
+    assert preferences["x"] == []
 
 
 def test_store_migrates_existing_feedback_table_safely(tmp_path) -> None:

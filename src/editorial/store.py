@@ -12,6 +12,9 @@ from .models import (
     ArticleDraft,
     AutomationRun,
     AutomationRunStatus,
+    BrandProfile,
+    BrandRule,
+    BrandRuleChannel,
     BufferDelivery,
     BufferDeliveryMode,
     BufferDeliveryStatus,
@@ -20,6 +23,7 @@ from .models import (
     DiscordApprovalRequest,
     DiscordApprovalStatus,
     EditorialPacket,
+    Organization,
     PreferenceScope,
     PreferenceSignal,
     SocialCampaign,
@@ -54,6 +58,8 @@ FEEDBACK_DIMENSIONS = (
 FEEDBACK_SIGNALS = tuple(signal.value for signal in PreferenceSignal)
 FEEDBACK_SCOPES = tuple(scope.value for scope in PreferenceScope)
 SOCIAL_PREFERENCE_LIMIT_PER_PLATFORM = 12
+DEFAULT_ORGANIZATION_ID = "org_codequest"
+DEFAULT_BRAND_ID = "brand_codequest"
 
 
 def _now() -> str:
@@ -66,6 +72,7 @@ class EditorialItemRecord:
     status: str
     created_at: str
     updated_at: str
+    brand_id: str = DEFAULT_BRAND_ID
 
 
 class EditorialStore:
@@ -93,12 +100,95 @@ class EditorialStore:
         with self._connect() as connection:
             connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS organizations (
+                    organization_id TEXT PRIMARY KEY,
+                    organization_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS brands (
+                    brand_id TEXT PRIMARY KEY,
+                    organization_id TEXT NOT NULL,
+                    profile_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (organization_id)
+                        REFERENCES organizations(organization_id)
+                        ON DELETE CASCADE
+                )
+                """
+            )
+            default_organization = Organization(
+                organization_id=DEFAULT_ORGANIZATION_ID,
+                name="CodeQuest workspace",
+            )
+            connection.execute(
+                "INSERT INTO organizations "
+                "(organization_id, organization_json, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(organization_id) DO NOTHING",
+                (
+                    default_organization.organization_id,
+                    default_organization.model_dump_json(),
+                    default_organization.created_at.isoformat(),
+                    default_organization.updated_at.isoformat(),
+                ),
+            )
+            default_brand = BrandProfile(
+                brand_id=DEFAULT_BRAND_ID,
+                organization_id=DEFAULT_ORGANIZATION_ID,
+                name="CodeQuest",
+            )
+            connection.execute(
+                "INSERT INTO brands "
+                "(brand_id, organization_id, profile_json, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(brand_id) DO NOTHING",
+                (
+                    default_brand.brand_id,
+                    default_brand.organization_id,
+                    default_brand.model_dump_json(),
+                    default_brand.created_at.isoformat(),
+                    default_brand.updated_at.isoformat(),
+                ),
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS editorial_items (
                     content_item_id TEXT PRIMARY KEY,
                     status TEXT NOT NULL,
                     packet_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
+                )
+                """
+            )
+            item_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(editorial_items)").fetchall()
+            }
+            if "brand_id" not in item_columns:
+                connection.execute(
+                    "ALTER TABLE editorial_items "
+                    f"ADD COLUMN brand_id TEXT NOT NULL DEFAULT '{DEFAULT_BRAND_ID}'"
+                )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS brand_rules (
+                    rule_id TEXT PRIMARY KEY,
+                    brand_id TEXT NOT NULL,
+                    channel TEXT NOT NULL,
+                    article_type TEXT,
+                    enabled INTEGER NOT NULL,
+                    priority INTEGER NOT NULL,
+                    rule_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (brand_id)
+                        REFERENCES brands(brand_id)
+                        ON DELETE CASCADE
                 )
                 """
             )
@@ -463,6 +553,113 @@ class EditorialStore:
         if cursor.rowcount != 1:
             raise KeyError(content_item_id)
 
+    def get_brand_profile(self, brand_id: str = DEFAULT_BRAND_ID) -> BrandProfile:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT profile_json FROM brands WHERE brand_id = ?",
+                (brand_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(brand_id)
+        return BrandProfile.model_validate_json(row["profile_json"])
+
+    def save_brand_profile(self, profile: BrandProfile) -> BrandProfile:
+        profile = BrandProfile.model_validate(profile.model_dump())
+        existing = self.get_brand_profile(profile.brand_id)
+        if existing.organization_id != profile.organization_id:
+            raise ValueError("A brand cannot be moved to another organization.")
+        profile.updated_at = datetime.now(timezone.utc)
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE brands SET profile_json = ?, updated_at = ? WHERE brand_id = ?",
+                (
+                    profile.model_dump_json(),
+                    profile.updated_at.isoformat(),
+                    profile.brand_id,
+                ),
+            )
+        if cursor.rowcount != 1:
+            raise KeyError(profile.brand_id)
+        return profile
+
+    def add_brand_rule(self, rule: BrandRule) -> BrandRule:
+        rule = BrandRule.model_validate(rule.model_dump())
+        self.get_brand_profile(rule.brand_id)
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO brand_rules "
+                "(rule_id, brand_id, channel, article_type, enabled, priority, "
+                "rule_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    rule.rule_id,
+                    rule.brand_id,
+                    rule.channel.value,
+                    rule.article_type.value if rule.article_type else None,
+                    int(rule.enabled),
+                    rule.priority,
+                    rule.model_dump_json(),
+                    rule.created_at.isoformat(),
+                    rule.updated_at.isoformat(),
+                ),
+            )
+        return rule
+
+    def save_brand_rule(self, rule: BrandRule) -> BrandRule:
+        rule = BrandRule.model_validate(rule.model_dump())
+        self.get_brand_profile(rule.brand_id)
+        rule.updated_at = datetime.now(timezone.utc)
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE brand_rules SET channel = ?, article_type = ?, enabled = ?, "
+                "priority = ?, rule_json = ?, updated_at = ? "
+                "WHERE rule_id = ? AND brand_id = ?",
+                (
+                    rule.channel.value,
+                    rule.article_type.value if rule.article_type else None,
+                    int(rule.enabled),
+                    rule.priority,
+                    rule.model_dump_json(),
+                    rule.updated_at.isoformat(),
+                    rule.rule_id,
+                    rule.brand_id,
+                ),
+            )
+        if cursor.rowcount != 1:
+            raise KeyError(rule.rule_id)
+        return rule
+
+    def get_brand_rule(self, rule_id: str) -> BrandRule | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT rule_json FROM brand_rules WHERE rule_id = ?",
+                (rule_id,),
+            ).fetchone()
+        return BrandRule.model_validate_json(row["rule_json"]) if row else None
+
+    def list_brand_rules(
+        self,
+        brand_id: str = DEFAULT_BRAND_ID,
+        channel: BrandRuleChannel | str | None = None,
+        enabled: bool | None = None,
+    ) -> list[BrandRule]:
+        conditions = ["brand_id = ?"]
+        values: list[str | int] = [brand_id]
+        if channel is not None:
+            parsed_channel = BrandRuleChannel(channel)
+            conditions.append("channel = ?")
+            values.append(parsed_channel.value)
+        if enabled is not None:
+            conditions.append("enabled = ?")
+            values.append(int(enabled))
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT rule_json FROM brand_rules WHERE "
+                + " AND ".join(conditions)
+                + " ORDER BY priority DESC, updated_at DESC, rule_id DESC",
+                values,
+            ).fetchall()
+        return [BrandRule.model_validate_json(row["rule_json"]) for row in rows]
+
     def add_feedback(
         self,
         content_item_id: str,
@@ -499,6 +696,39 @@ class EditorialStore:
                 (content_item_id,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def list_feedback_signals(
+        self, brand_id: str = DEFAULT_BRAND_ID
+    ) -> list[dict[str, str | int]]:
+        """Return traceable feedback for review in the Brand Brain learning inbox."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT f.feedback_id, f.content_item_id, f.dimension, f.signal, "
+                "f.scope, f.note, f.created_at, i.packet_json "
+                "FROM editorial_feedback AS f "
+                "JOIN editorial_items AS i ON i.content_item_id = f.content_item_id "
+                "WHERE i.brand_id = ? ORDER BY f.feedback_id DESC",
+                (brand_id,),
+            ).fetchall()
+        signals = []
+        for row in rows:
+            item = dict(row)
+            packet = EditorialPacket.model_validate_json(item.pop("packet_json"))
+            item["article_type"] = packet.brief.article_type.value
+            item["story_title"] = packet.brief.working_title
+            signals.append(item)
+        return signals
+
+    def get_feedback_signal(self, feedback_id: int) -> dict[str, str | int] | None:
+        return next(
+            (
+                signal
+                for signal in self.list_feedback_signals()
+                if signal["feedback_id"] == feedback_id
+            ),
+            None,
+        )
 
     def save_draft(self, draft: ArticleDraft) -> None:
         if self.get_item(draft.content_item_id) is None:
@@ -835,6 +1065,11 @@ class EditorialStore:
                 "ORDER BY feedback_id DESC"
             ).fetchall()
         preferences = {platform.value: [] for platform in SocialPlatform}
+        for rule in self.list_brand_rules(enabled=True):
+            if rule.channel.value not in preferences:
+                continue
+            instruction = f"{rule.signal.value.title()}: {rule.instruction}"
+            preferences[rule.channel.value].append(instruction)
         for row in rows:
             instruction = f"{str(row['signal']).title()}: {row['note']}"
             platform_preferences = preferences[row["platform"]]
@@ -1354,4 +1589,5 @@ class EditorialStore:
             status=row["status"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            brand_id=row["brand_id"] if "brand_id" in row.keys() else DEFAULT_BRAND_ID,
         )

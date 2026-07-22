@@ -6,16 +6,18 @@ from collections import OrderedDict
 
 from .models import (
     ArticleType,
+    BrandRuleChannel,
     EditorialPreferenceProfile,
     PreferenceRule,
 )
-from .store import EditorialStore
+from .store import DEFAULT_BRAND_ID, EditorialStore
 
 
 def build_preference_profile(
     store: EditorialStore,
     article_type: ArticleType | str | None = None,
     content_item_id: str | None = None,
+    brand_id: str = DEFAULT_BRAND_ID,
 ) -> EditorialPreferenceProfile:
     """Build a deduplicated profile while retaining evidence of repeated feedback."""
 
@@ -23,6 +25,25 @@ def build_preference_profile(
     feedback = store.list_applicable_feedback(
         article_type=parsed_type.value if parsed_type else None,
         content_item_id=content_item_id,
+    )
+    approved_rules = [
+        rule
+        for rule in store.list_brand_rules(
+            brand_id=brand_id,
+            channel=BrandRuleChannel.ARTICLE,
+            enabled=True,
+        )
+        if rule.article_type is None or rule.article_type == parsed_type
+    ]
+    feedback.extend(
+        {
+            "signal": rule.signal.value,
+            "dimension": rule.dimension,
+            "note": rule.instruction,
+            "scope": "article_type" if rule.article_type else "global",
+            "created_at": rule.updated_at.isoformat(),
+        }
+        for rule in approved_rules
     )
     grouped: OrderedDict[tuple[str, str, str, str], PreferenceRule] = OrderedDict()
     for entry in feedback:
@@ -46,5 +67,6 @@ def build_preference_profile(
     return EditorialPreferenceProfile(
         article_type=parsed_type,
         content_item_id=content_item_id,
+        brand_profile=store.get_brand_profile(brand_id),
         rules=list(grouped.values()),
     )

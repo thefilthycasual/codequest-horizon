@@ -212,6 +212,72 @@ def test_editorial_queue_supports_filter_search_and_quick_selection(tmp_path) ->
     assert "No matching stories" in client.get("/editorial?q=not-a-real-story").text
 
 
+def test_brand_brain_manages_profile_rules_and_learning_signals(tmp_path) -> None:
+    db_path = tmp_path / "editorial.sqlite3"
+    packet = _packet()
+    store = EditorialStore(db_path)
+    store.save_packet(packet)
+    store.add_feedback(
+        packet.brief.content_item_id,
+        "tone",
+        "Avoid generic launch language.",
+        signal="avoid",
+        scope="story",
+    )
+    client = TestClient(create_app(db_path))
+
+    overview = client.get("/preferences")
+    assert overview.status_code == 200
+    assert "Brand Brain" in overview.text
+    assert "What the writer receives" in overview.text
+    assert "Learning inbox" in overview.text
+
+    profile_response = client.post(
+        "/preferences/profile",
+        data={
+            "name": "CodeQuest",
+            "description": "Practical developer education.",
+            "audience": "Developers and coding learners",
+            "voice_summary": "Direct, useful, and evidence-led.",
+            "prohibited_terms": "revolutionary\ngame-changing",
+            "default_language": "en",
+        },
+        follow_redirects=False,
+    )
+    rule_response = client.post(
+        "/preferences/rules",
+        data={
+            "channel": "article",
+            "signal": "prefer",
+            "dimension": "structure",
+            "instruction": "Put developer action before background context.",
+            "article_type": "news_report",
+            "priority": "75",
+            "return_tab": "article",
+        },
+        follow_redirects=False,
+    )
+    signal = store.list_feedback_signals()[0]
+    promote_response = client.post(
+        f"/preferences/feedback/{signal['feedback_id']}/promote",
+        data={"rule_scope": "brand"},
+        follow_redirects=False,
+    )
+
+    assert profile_response.status_code == 303
+    assert rule_response.status_code == 303
+    assert promote_response.status_code == 303
+    assert store.get_brand_profile().prohibited_terms == [
+        "revolutionary",
+        "game-changing",
+    ]
+    assert len(store.list_brand_rules()) == 2
+    assert "Put developer action" in client.get("/preferences?tab=article").text
+    learning = client.get("/preferences?tab=learning")
+    assert "Avoid generic launch language" in learning.text
+    assert "Approved rule" in learning.text
+
+
 def test_workspace_returns_empty_state_and_missing_item(tmp_path) -> None:
     client = TestClient(create_app(tmp_path / "editorial.sqlite3"))
 

@@ -43,6 +43,9 @@ from .drafting import (
 from .models import (
     ArticleDraft,
     ArticleType,
+    BrandProfile,
+    BrandRule,
+    BrandRuleChannel,
     BufferDeliveryMode,
     BufferDeliveryStatus,
     DecisionOutcome,
@@ -67,6 +70,7 @@ from .social import (
     validate_social_post,
 )
 from .store import (
+    DEFAULT_BRAND_ID,
     EDITORIAL_STATUSES,
     FEEDBACK_DIMENSIONS,
     FEEDBACK_SCOPES,
@@ -163,10 +167,12 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 .delivery-actions{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}.delivery-actions .text-link{display:inline-block;margin-bottom:10px}.delivery-state{margin-top:18px;padding:14px;border-radius:12px;background:#f8f9fa}.payload-copy{font-size:16px;white-space:pre-wrap;overflow-wrap:anywhere}.payload-table{display:grid;gap:8px}.payload-row{display:flex;justify-content:space-between;gap:20px;min-width:0;border-top:1px solid var(--line);padding-top:8px}.payload-row code{min-width:0;overflow-wrap:anywhere;word-break:break-all;text-align:right}.panel .text-link{overflow-wrap:anywhere}
 .run-list{display:grid;gap:10px}.run-row{display:grid;grid-template-columns:minmax(150px,.8fr) minmax(210px,1.4fr) auto;gap:18px;align-items:center;padding:15px 0;border-top:1px solid var(--line)}.run-row:first-child{border-top:0}.run-counts{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12px}.badge.completed{color:var(--success);background:#eefaf5;border-color:#cdebdc}.badge.running{color:#1d4ed8;background:#eff6ff;border-color:#bfdbfe}.badge.partial{color:var(--warning);background:#fff7ed;border-color:#fed7aa}.badge.failed{color:var(--danger);background:#fef2f2;border-color:#fecaca}
 .run-row{text-decoration:none;border-radius:10px;padding-left:10px;padding-right:10px}.run-row:hover,.run-row.active{background:#f7f7f8}.run-detail{margin:0 0 24px}.run-detail-head{display:flex;justify-content:space-between;gap:16px;align-items:start}.run-detail h2{margin-top:8px}.run-stories{display:grid;gap:8px;margin-top:16px}.run-story{padding:10px 12px;border:1px solid var(--line);border-radius:10px;text-decoration:none;font-weight:700}.run-story:hover{border-color:#f2c3a3}.queue-tools{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:14px}.queue-tools form{display:grid;grid-template-columns:1fr auto;gap:8px;width:min(100%,420px);justify-self:end}.queue-tools button{width:auto;padding-left:22px;padding-right:22px}.filter-tabs{display:flex;gap:7px;overflow:auto;padding-bottom:3px}.filter-tab{white-space:nowrap;text-decoration:none;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);font-weight:700}.filter-tab.active{background:var(--ink);border-color:var(--ink);color:#fff}.queue-list{display:grid}.queue-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,.25fr);gap:22px;padding:22px 4px;border-top:1px solid var(--line);align-items:center}.queue-row:first-child{border-top:0}.queue-row h2{margin:8px 0 6px}.queue-row h2 a{text-decoration:none}.queue-row h2 a:hover{color:#c75b17}.queue-row p{margin:0}.queue-summary{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.queue-side{text-align:right}.queue-side .meta{justify-content:flex-end;margin-top:0}.queue-side form{margin-top:10px}.queue-side .text-link{display:inline-block;margin-top:10px}.compact-button{padding:8px 14px;font-size:13px}
+.brain-tabs{display:flex;gap:6px;padding:6px;background:#eceef1;border-radius:13px;margin-bottom:24px;overflow:auto}.brain-tab{white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.brain-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}.profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}.profile-grid .span-2{grid-column:1/-1}.profile-grid textarea{min-height:86px}.brain-rule-list{display:grid;gap:14px}.brain-rule{border:1px solid var(--line);border-radius:14px;padding:17px;background:#fff}.brain-rule.disabled{opacity:.62}.brain-rule-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}.brain-rule form{display:grid;grid-template-columns:150px 150px 100px;gap:10px}.brain-rule form .rule-instruction{grid-column:1/-1}.brain-rule form .rule-enabled{display:flex;align-items:center;gap:8px}.brain-rule form .rule-enabled input{width:auto}.brain-rule form button{grid-column:1/-1}.memory-preview{max-height:430px;overflow:auto}.learning-signal{padding:17px 0;border-top:1px solid var(--line)}.learning-signal:first-of-type{border-top:0}.learning-signal p{margin:8px 0}.promote-form{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px}.promote-form button{width:auto}.coverage-list{display:grid;gap:9px}.coverage-row{display:flex;justify-content:space-between;gap:12px;padding-top:9px;border-top:1px solid var(--line)}
 @media(max-width:980px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:820px){.sidebar{position:static;width:auto;padding:12px}.workspace{padding-bottom:12px;margin-bottom:8px}.workspace small,.nav-label,.sidebar-foot{display:none}
 .side-nav{display:flex;overflow:auto}.nav-item{white-space:nowrap}.content{margin-left:0}.shell{padding:30px 18px 70px}.story-tabs{border-radius:10px}.story-tab{padding:8px 12px}}
 @media(max-width:700px){.queue-tools{grid-template-columns:1fr}.queue-row{grid-template-columns:1fr}.queue-side{text-align:left}.queue-side .meta{justify-content:flex-start}.queue-side form{max-width:230px}}
+@media(max-width:700px){.profile-grid,.brain-rule form{grid-template-columns:1fr}.profile-grid .span-2,.brain-rule form .rule-instruction,.brain-rule form button{grid-column:1}.promote-form{grid-template-columns:1fr}.promote-form button{width:100%}}
 @media(max-width:560px){.run-row{grid-template-columns:1fr}.stat-grid{grid-template-columns:1fr 1fr}.queue-tools form{grid-template-columns:1fr}.queue-tools button{width:100%}}
 @media(max-width:480px){.nav-item{font-size:13px;padding:9px}.nav-icon{display:none}}
 """
@@ -197,7 +203,7 @@ def _page(title: str, body: str, active: str = "overview") -> HTMLResponse:
             _nav_item("overview", "Overview", "/", active),
             _nav_item("editorial", "Editorial queue", "/editorial", active),
             _nav_item("drafts", "Draft library", "/drafts", active),
-            _nav_item("memory", "Editorial memory", "/preferences", active),
+            _nav_item("memory", "Brand Brain", "/preferences", active),
             _nav_item("operations", "Operations", "/operations", active),
         )
     )
@@ -682,31 +688,375 @@ def create_app(
         )
 
     @app.get("/preferences", response_class=HTMLResponse)
-    def preferences() -> HTMLResponse:
-        sections = []
-        global_profile = build_preference_profile(store)
-        sections.append(
-            "<article class='panel'><p class='eyebrow'>ALL ARTICLES</p>"
-            f"<h2>Global preferences</h2>{_rules_html(global_profile)}</article>"
+    def preferences(tab: str = "overview", preview_type: str = "news_report") -> HTMLResponse:
+        allowed_tabs = {"overview", "article", "social", "learning"}
+        if tab not in allowed_tabs:
+            raise HTTPException(status_code=404, detail="Brand Brain tab not found")
+        try:
+            selected_preview_type = ArticleType(preview_type)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="Article type not found") from exc
+
+        brand = store.get_brand_profile()
+        all_rules = store.list_brand_rules()
+        active_rules = [rule for rule in all_rules if rule.enabled]
+        feedback_signals = store.list_feedback_signals()
+        profile_fields = [
+            brand.description,
+            brand.audience,
+            brand.positioning,
+            brand.voice_summary,
+            brand.default_cta,
+            brand.website_url,
+            brand.prohibited_terms,
+        ]
+        completeness = round(
+            100 * sum(bool(value) for value in profile_fields) / len(profile_fields)
         )
-        for article_type in ArticleType:
-            profile = build_preference_profile(store, article_type=article_type)
-            specific_rules = [rule for rule in profile.rules if rule.scope.value == "article_type"]
-            if not specific_rules:
-                continue
-            profile.rules = specific_rules
-            sections.append(
-                f"<article class='panel'><p class='eyebrow'>{escape(article_type.value.replace('_', ' ').upper())}</p>"
-                f"<h2>Article-type preferences</h2>{_rules_html(profile)}</article>"
+        article_coverage = len(
+            {rule.article_type for rule in active_rules if rule.article_type is not None}
+        )
+        social_coverage = len(
+            {
+                rule.channel
+                for rule in active_rules
+                if rule.channel != BrandRuleChannel.ARTICLE
+            }
+        )
+        stats = (
+            "<section class='stat-grid'>"
+            f"<article class='stat-card'><small>Brand profile</small><strong class='stat-value'>{completeness}%</strong><span class='muted'>context completed</span></article>"
+            f"<article class='stat-card'><small>Active rules</small><strong class='stat-value'>{len(active_rules)}</strong><span class='muted'>approved constraints</span></article>"
+            f"<article class='stat-card'><small>Learning inbox</small><strong class='stat-value'>{len(feedback_signals)}</strong><span class='muted'>traceable signals</span></article>"
+            f"<article class='stat-card'><small>Coverage</small><strong class='stat-value'>{article_coverage + social_coverage}</strong><span class='muted'>article types and social channels</span></article>"
+            "</section>"
+        )
+        tabs = "".join(
+            f"<a class='brain-tab{' active' if key == tab else ''}' href='/preferences?tab={key}'>"
+            f"{label}</a>"
+            for key, label in (
+                ("overview", "Overview"),
+                ("article", "Article voice"),
+                ("social", "Social voice"),
+                ("learning", "Learning inbox"),
             )
+        )
+
+        def article_type_options(selected: ArticleType | None) -> str:
+            options = "<option value=''>All article types</option>"
+            return options + "".join(
+                f"<option value='{article_type.value}'"
+                f"{' selected' if selected == article_type else ''}>"
+                f"{escape(article_type.value.replace('_', ' ').title())}</option>"
+                for article_type in ArticleType
+            )
+
+        def signal_options(selected: PreferenceSignal) -> str:
+            return "".join(
+                f"<option value='{signal.value}'"
+                f"{' selected' if selected == signal else ''}>{signal.value.title()}</option>"
+                for signal in PreferenceSignal
+            )
+
+        def dimension_options(selected: str) -> str:
+            return "".join(
+                f"<option value='{dimension}'"
+                f"{' selected' if selected == dimension else ''}>"
+                f"{escape(dimension.replace('_', ' ').title())}</option>"
+                for dimension in FEEDBACK_DIMENSIONS
+            )
+
+        def rule_editor(rule: BrandRule) -> str:
+            type_field = (
+                f"<select name='article_type'>{article_type_options(rule.article_type)}</select>"
+                if rule.channel == BrandRuleChannel.ARTICLE
+                else "<input type='hidden' name='article_type' value=''>"
+            )
+            return (
+                f"<article class='brain-rule{' disabled' if not rule.enabled else ''}'>"
+                "<div class='brain-rule-head'><div>"
+                f"<span class='badge {escape(rule.signal.value)}'>{escape(rule.signal.value)}</span> "
+                f"<span class='badge'>{escape(rule.channel.value)}</span></div>"
+                f"<small class='muted'>Priority {rule.priority} · {escape(rule.source.replace('_', ' '))}</small></div>"
+                f"<form method='post' action='/preferences/rules/{quote(rule.rule_id, safe='')}'>"
+                f"<select name='signal'>{signal_options(rule.signal)}</select>"
+                f"<select name='dimension'>{dimension_options(rule.dimension)}</select>"
+                f"<input type='number' name='priority' min='0' max='100' value='{rule.priority}'>"
+                f"{type_field}"
+                f"<textarea class='rule-instruction' name='instruction' required>{escape(rule.instruction)}</textarea>"
+                "<label class='rule-enabled'>"
+                f"<input type='checkbox' name='enabled' value='true'{' checked' if rule.enabled else ''}> Active</label>"
+                f"<input type='hidden' name='return_tab' value='{tab}'>"
+                "<button class='button-revise' type='submit'>Save rule</button></form></article>"
+            )
+
+        preview_profile = build_preference_profile(store, selected_preview_type)
+        preview_options = "".join(
+            f"<option value='{article_type.value}'"
+            f"{' selected' if article_type == selected_preview_type else ''}>"
+            f"{escape(article_type.value.replace('_', ' ').title())}</option>"
+            for article_type in ArticleType
+        )
+        overview_body = (
+            "<div class='layout'><section class='stack'>"
+            "<article class='panel'><p class='eyebrow'>APPROVED BRAND CONTEXT</p>"
+            f"<h2>{escape(brand.name)} profile</h2>"
+            "<form class='profile-grid' method='post' action='/preferences/profile'>"
+            f"<label><span class='field-label'>Brand name</span><input name='name' required value='{escape(brand.name, quote=True)}'></label>"
+            f"<label><span class='field-label'>Website</span><input name='website_url' value='{escape(brand.website_url, quote=True)}' placeholder='https://example.com'></label>"
+            f"<label class='span-2'><span class='field-label'>Brand description</span><textarea name='description' placeholder='What the organisation does and why it exists'>{escape(brand.description)}</textarea></label>"
+            f"<label><span class='field-label'>Primary audience</span><textarea name='audience'>{escape(brand.audience)}</textarea></label>"
+            f"<label><span class='field-label'>Positioning</span><textarea name='positioning'>{escape(brand.positioning)}</textarea></label>"
+            f"<label class='span-2'><span class='field-label'>Voice summary</span><textarea name='voice_summary' placeholder='Practical, evidence-led, direct...'>{escape(brand.voice_summary)}</textarea></label>"
+            f"<label><span class='field-label'>Default call to action</span><textarea name='default_cta'>{escape(brand.default_cta)}</textarea></label>"
+            f"<label><span class='field-label'>Prohibited terms</span><textarea name='prohibited_terms' placeholder='One per line'>{escape(chr(10).join(brand.prohibited_terms))}</textarea></label>"
+            f"<label><span class='field-label'>Default language</span><input name='default_language' value='{escape(brand.default_language, quote=True)}'></label>"
+            "<button class='button-approve span-2' type='submit'>Save brand profile</button></form></article>"
+            "</section><aside class='stack'><article class='panel'>"
+            "<p class='eyebrow'>GENERATION PREVIEW</p><h2>What the writer receives</h2>"
+            "<form method='get' action='/preferences'><input type='hidden' name='tab' value='overview'>"
+            f"<select name='preview_type'>{preview_options}</select>"
+            "<button class='button-revise' type='submit'>Preview article type</button></form>"
+            f"<pre class='memory-preview'>{escape(preview_profile.writer_instructions())}</pre>"
+            "</article><article class='panel'><h2>Controlled learning</h2>"
+            "<p class='muted'>Story feedback remains a signal until you promote it. Approved rules can be edited or paused at any time.</p>"
+            "<a class='text-link' href='/preferences?tab=learning'>Review learning inbox →</a>"
+            "</article></aside></div>"
+        )
+
+        article_rules = [
+            rule for rule in all_rules if rule.channel == BrandRuleChannel.ARTICLE
+        ]
+        article_rules_html = "".join(rule_editor(rule) for rule in article_rules) or (
+            "<div class='empty'><h2>No approved article rules</h2>"
+            "<p class='muted'>Add the first rule or promote feedback from the learning inbox.</p></div>"
+        )
+        article_body = (
+            "<div class='layout'><section class='brain-rule-list'>"
+            f"{article_rules_html}</section><aside class='panel'><p class='eyebrow'>NEW ARTICLE RULE</p>"
+            "<h2>Add an approved constraint</h2><form method='post' action='/preferences/rules'>"
+            "<input type='hidden' name='channel' value='article'>"
+            "<select name='signal'><option value='prefer'>Prefer</option><option value='avoid'>Avoid</option></select>"
+            f"<select name='dimension'>{dimension_options('general')}</select>"
+            f"<select name='article_type'>{article_type_options(None)}</select>"
+            "<input type='number' name='priority' min='0' max='100' value='50'>"
+            "<textarea name='instruction' required placeholder='Write one clear, testable instruction'></textarea>"
+            "<input type='hidden' name='return_tab' value='article'>"
+            "<button type='submit'>Add article rule</button></form></aside></div>"
+        )
+
+        social_rules = [
+            rule for rule in all_rules if rule.channel != BrandRuleChannel.ARTICLE
+        ]
+        social_rules_html = "".join(rule_editor(rule) for rule in social_rules) or (
+            "<div class='empty'><h2>No approved social rules</h2>"
+            "<p class='muted'>Create platform-specific voice constraints for future campaigns.</p></div>"
+        )
+        social_channel_options = "".join(
+            f"<option value='{channel.value}'>{escape(channel.value.title())}</option>"
+            for channel in BrandRuleChannel
+            if channel != BrandRuleChannel.ARTICLE
+        )
+        social_body = (
+            "<div class='layout'><section class='brain-rule-list'>"
+            f"{social_rules_html}</section><aside class='panel'><p class='eyebrow'>NEW SOCIAL RULE</p>"
+            "<h2>Add a platform constraint</h2><form method='post' action='/preferences/rules'>"
+            f"<select name='channel'>{social_channel_options}</select>"
+            "<select name='signal'><option value='prefer'>Prefer</option><option value='avoid'>Avoid</option></select>"
+            f"<select name='dimension'>{dimension_options('tone')}</select>"
+            "<input type='hidden' name='article_type' value=''>"
+            "<input type='number' name='priority' min='0' max='100' value='50'>"
+            "<textarea name='instruction' required placeholder='For example: Open LinkedIn posts with a concrete developer consequence.'></textarea>"
+            "<input type='hidden' name='return_tab' value='social'>"
+            "<button type='submit'>Add social rule</button></form></aside></div>"
+        )
+
+        approved_sources = {rule.source for rule in all_rules}
+        learning_html = "".join(
+            "<article class='learning-signal'>"
+            f"<span class='badge {escape(str(signal['signal']))}'>{escape(str(signal['signal']))}</span> "
+            f"<span class='badge'>{escape(str(signal['dimension']).replace('_', ' '))}</span> "
+            f"<span class='muted'>{escape(str(signal['scope']).replace('_', ' '))}</span>"
+            f"<p>{escape(str(signal['note']))}</p>"
+            f"<small class='muted'>From <a href='/items/{quote(str(signal['content_item_id']), safe='')}?tab=learning'>"
+            f"{escape(str(signal['story_title']))}</a> · {escape(str(signal['created_at'])[:10])}</small>"
+            + (
+                "<p><span class='badge pass'>Approved rule</span></p>"
+                if f"feedback:{signal['feedback_id']}" in approved_sources
+                else (
+                    f"<form class='promote-form' method='post' action='/preferences/feedback/{signal['feedback_id']}/promote'>"
+                    "<select name='rule_scope'><option value='brand'>Brand-wide</option>"
+                    "<option value='article_type'>This article type</option></select>"
+                    "<button type='submit'>Promote to rule</button></form>"
+                )
+            )
+            + "</article>"
+            for signal in feedback_signals
+        ) or (
+            "<div class='empty'><h2>No learning signals yet</h2>"
+            "<p class='muted'>Feedback from story Learning tabs will appear here for review.</p></div>"
+        )
+        learning_body = (
+            "<div class='layout'><section class='panel'><p class='eyebrow'>HUMAN-REVIEWED LEARNING</p>"
+            f"<h2>{len(feedback_signals)} feedback signal(s)</h2>{learning_html}</section>"
+            "<aside class='panel'><h2>How this improves generation</h2>"
+            "<p class='muted'>Promoted signals become approved rules. Repeated editing patterns can later create suggestions here, but never change the brand automatically.</p>"
+            "</aside></div>"
+        )
+        bodies = {
+            "overview": overview_body,
+            "article": article_body,
+            "social": social_body,
+            "learning": learning_body,
+        }
         return _page(
-            "Preferences",
-            "<header class='page-head'><p class='eyebrow'>EDITORIAL MEMORY</p>"
-            "<h1>Your taste, made <span class='accent'>repeatable.</span></h1>"
-            "<p class='muted'>Only explicit, reusable feedback appears here. Story-only notes stay with their story.</p></header>"
-            f"<section class='stack'>{''.join(sections)}</section>",
+            "Brand Brain",
+            "<header class='page-head'><p class='eyebrow'>BRAND BRAIN</p>"
+            "<h1>Teach the system how your <span class='accent'>brand thinks.</span></h1>"
+            "<p class='muted'>Approved brand context and granular rules shape future articles and social campaigns. Learning remains transparent and reversible.</p></header>"
+            f"{stats}<nav class='brain-tabs' aria-label='Brand Brain sections'>{tabs}</nav>"
+            f"{bodies[tab]}",
             active="memory",
         )
+
+    @app.post("/preferences/profile")
+    def update_brand_profile(
+        name: str = Form(),
+        website_url: str = Form(""),
+        description: str = Form(""),
+        audience: str = Form(""),
+        positioning: str = Form(""),
+        voice_summary: str = Form(""),
+        default_cta: str = Form(""),
+        prohibited_terms: str = Form(""),
+        default_language: str = Form("en"),
+    ) -> RedirectResponse:
+        current = store.get_brand_profile()
+        terms = [
+            term.strip()
+            for term in prohibited_terms.replace(",", "\n").splitlines()
+            if term.strip()
+        ]
+        cleaned_language = default_language.strip() or "en"
+        if not cleaned_language.replace("-", "").replace("_", "").isalnum():
+            raise HTTPException(status_code=400, detail="Use a valid language code.")
+        try:
+            profile = BrandProfile(
+                brand_id=current.brand_id,
+                organization_id=current.organization_id,
+                name=name.strip(),
+                website_url=website_url.strip(),
+                description=description.strip(),
+                audience=audience.strip(),
+                positioning=positioning.strip(),
+                voice_summary=voice_summary.strip(),
+                default_cta=default_cta.strip(),
+                prohibited_terms=list(dict.fromkeys(terms)),
+                default_language=cleaned_language,
+                created_at=current.created_at,
+                updated_at=current.updated_at,
+            )
+            store.save_brand_profile(profile)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse("/preferences?tab=overview", status_code=303)
+
+    @app.post("/preferences/rules")
+    def create_brand_rule(
+        channel: str = Form(),
+        signal: str = Form(),
+        dimension: str = Form(),
+        instruction: str = Form(),
+        article_type: str = Form(""),
+        priority: int = Form(50),
+        return_tab: str = Form("article"),
+    ) -> RedirectResponse:
+        if return_tab not in {"article", "social"}:
+            raise HTTPException(status_code=400, detail="Invalid Brand Brain destination.")
+        if dimension not in FEEDBACK_DIMENSIONS:
+            raise HTTPException(status_code=400, detail="Unsupported rule dimension.")
+        try:
+            parsed_channel = BrandRuleChannel(channel)
+            parsed_type = ArticleType(article_type) if article_type else None
+            if parsed_channel != BrandRuleChannel.ARTICLE:
+                parsed_type = None
+            rule = BrandRule(
+                brand_id=DEFAULT_BRAND_ID,
+                channel=parsed_channel,
+                signal=PreferenceSignal(signal),
+                dimension=dimension,
+                instruction=instruction.strip(),
+                article_type=parsed_type,
+                priority=priority,
+            )
+            store.add_brand_rule(rule)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(f"/preferences?tab={return_tab}", status_code=303)
+
+    @app.post("/preferences/rules/{rule_id}")
+    def update_brand_rule(
+        rule_id: str,
+        signal: str = Form(),
+        dimension: str = Form(),
+        instruction: str = Form(),
+        article_type: str = Form(""),
+        priority: int = Form(50),
+        enabled: str = Form(""),
+        return_tab: str = Form("article"),
+    ) -> RedirectResponse:
+        rule = store.get_brand_rule(rule_id)
+        if rule is None:
+            raise HTTPException(status_code=404, detail="Brand rule not found")
+        if return_tab not in {"article", "social"}:
+            raise HTTPException(status_code=400, detail="Invalid Brand Brain destination.")
+        if dimension not in FEEDBACK_DIMENSIONS:
+            raise HTTPException(status_code=400, detail="Unsupported rule dimension.")
+        try:
+            rule.signal = PreferenceSignal(signal)
+            rule.dimension = dimension
+            rule.instruction = instruction.strip()
+            rule.article_type = (
+                ArticleType(article_type)
+                if article_type and rule.channel == BrandRuleChannel.ARTICLE
+                else None
+            )
+            rule.priority = priority
+            rule.enabled = enabled == "true"
+            store.save_brand_rule(rule)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(f"/preferences?tab={return_tab}", status_code=303)
+
+    @app.post("/preferences/feedback/{feedback_id}/promote")
+    def promote_feedback(feedback_id: int, rule_scope: str = Form()) -> RedirectResponse:
+        signal = store.get_feedback_signal(feedback_id)
+        if signal is None:
+            raise HTTPException(status_code=404, detail="Feedback signal not found")
+        if rule_scope not in {"brand", "article_type"}:
+            raise HTTPException(status_code=400, detail="Unsupported rule scope.")
+        if f"feedback:{feedback_id}" not in {
+            rule.source for rule in store.list_brand_rules()
+        }:
+            try:
+                store.add_brand_rule(
+                    BrandRule(
+                        brand_id=DEFAULT_BRAND_ID,
+                        channel=BrandRuleChannel.ARTICLE,
+                        signal=PreferenceSignal(str(signal["signal"])),
+                        dimension=str(signal["dimension"]),
+                        instruction=str(signal["note"]),
+                        article_type=(
+                            ArticleType(str(signal["article_type"]))
+                            if rule_scope == "article_type"
+                            else None
+                        ),
+                        source=f"feedback:{feedback_id}",
+                    )
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse("/preferences?tab=learning", status_code=303)
 
     @app.get("/items/{content_item_id}", response_class=HTMLResponse)
     def detail(
@@ -1410,6 +1760,7 @@ def create_app(
             dek=cleaned_dek,
             sections=sections,
             source_map=base.source_map,
+            brand_profile_snapshot=base.brand_profile_snapshot,
             preference_rules=base.preference_rules,
             revision_notes=base.revision_notes,
             parent_draft_id=base.draft_id,

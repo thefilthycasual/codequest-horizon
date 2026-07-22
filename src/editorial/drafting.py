@@ -144,6 +144,7 @@ class ArticleDraftGenerator:
             dek=generated.dek,
             sections=generated.sections,
             source_map=source_map,
+            brand_profile_snapshot=profile.brand_profile,
             preference_rules=profile.rules,
             revision_notes=revision_notes or [],
             generator_model=self.model_name,
