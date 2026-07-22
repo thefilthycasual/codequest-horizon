@@ -128,6 +128,15 @@ class EditorialStore:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS workspace_settings (
+                    setting_key TEXT PRIMARY KEY,
+                    setting_value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
             default_organization = Organization(
                 organization_id=DEFAULT_ORGANIZATION_ID,
                 name="CodeQuest workspace",
@@ -159,6 +168,12 @@ class EditorialStore:
                     default_brand.created_at.isoformat(),
                     default_brand.updated_at.isoformat(),
                 ),
+            )
+            connection.execute(
+                "INSERT INTO workspace_settings (setting_key, setting_value, updated_at) "
+                "VALUES ('active_brand_id', ?, ?) "
+                "ON CONFLICT(setting_key) DO NOTHING",
+                (DEFAULT_BRAND_ID, _now()),
             )
             connection.execute(
                 """
@@ -579,18 +594,19 @@ class EditorialStore:
         return asset
 
     def get_visual_brand_profile(
-        self, brand_id: str = DEFAULT_BRAND_ID
+        self, brand_id: str | None = None
     ) -> VisualBrandProfile:
-        self.get_brand_profile(brand_id)
+        selected_brand_id = brand_id or self.get_active_brand_id()
+        self.get_brand_profile(selected_brand_id)
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT profile_json FROM visual_brand_profiles WHERE brand_id = ?",
-                (brand_id,),
+                (selected_brand_id,),
             ).fetchone()
         return (
             VisualBrandProfile.model_validate_json(row["profile_json"])
             if row
-            else VisualBrandProfile(brand_id=brand_id)
+            else VisualBrandProfile(brand_id=selected_brand_id)
         )
 
     def save_visual_brand_profile(
@@ -642,10 +658,11 @@ class EditorialStore:
         return feedback
 
     def list_visual_feedback(
-        self, brand_id: str = DEFAULT_BRAND_ID, asset_id: str | None = None
+        self, brand_id: str | None = None, asset_id: str | None = None
     ) -> list[VisualPreferenceFeedback]:
+        selected_brand_id = brand_id or self.get_active_brand_id()
         query = "SELECT feedback_json FROM visual_image_feedback WHERE brand_id = ?"
-        params: list[str] = [brand_id]
+        params: list[str] = [selected_brand_id]
         if asset_id is not None:
             query += " AND asset_id = ?"
             params.append(asset_id)
@@ -815,43 +832,147 @@ class EditorialStore:
             ).fetchall()
         return [AutomationRun.model_validate_json(row["run_json"]) for row in rows]
 
-    def save_packet(self, packet: EditorialPacket, status: str = "candidate") -> None:
+    def get_active_brand_id(self) -> str:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT setting_value FROM workspace_settings "
+                "WHERE setting_key = 'active_brand_id'"
+            ).fetchone()
+        return str(row["setting_value"]) if row else DEFAULT_BRAND_ID
+
+    def set_active_brand(self, brand_id: str) -> BrandProfile:
+        brand = self.get_brand_profile(brand_id)
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO workspace_settings (setting_key, setting_value, updated_at) "
+                "VALUES ('active_brand_id', ?, ?) ON CONFLICT(setting_key) DO UPDATE SET "
+                "setting_value = excluded.setting_value, updated_at = excluded.updated_at",
+                (brand_id, _now()),
+            )
+        return brand
+
+    def list_organizations(self) -> list[Organization]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT organization_json FROM organizations ORDER BY "
+                "json_extract(organization_json, '$.name') COLLATE NOCASE"
+            ).fetchall()
+        return [Organization.model_validate_json(row["organization_json"]) for row in rows]
+
+    def add_organization(self, organization: Organization) -> Organization:
+        organization = Organization.model_validate(organization.model_dump())
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO organizations "
+                "(organization_id, organization_json, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?)",
+                (
+                    organization.organization_id,
+                    organization.model_dump_json(),
+                    organization.created_at.isoformat(),
+                    organization.updated_at.isoformat(),
+                ),
+            )
+        return organization
+
+    def get_organization(self, organization_id: str) -> Organization:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT organization_json FROM organizations WHERE organization_id = ?",
+                (organization_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(organization_id)
+        return Organization.model_validate_json(row["organization_json"])
+
+    def list_brands(self, organization_id: str | None = None) -> list[BrandProfile]:
+        query = "SELECT profile_json FROM brands"
+        params: tuple[str, ...] = ()
+        if organization_id is not None:
+            query += " WHERE organization_id = ?"
+            params = (organization_id,)
+        query += " ORDER BY json_extract(profile_json, '$.name') COLLATE NOCASE"
+        with self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [BrandProfile.model_validate_json(row["profile_json"]) for row in rows]
+
+    def add_brand(self, profile: BrandProfile) -> BrandProfile:
+        profile = BrandProfile.model_validate(profile.model_dump())
+        self.get_organization(profile.organization_id)
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO brands "
+                "(brand_id, organization_id, profile_json, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    profile.brand_id,
+                    profile.organization_id,
+                    profile.model_dump_json(),
+                    profile.created_at.isoformat(),
+                    profile.updated_at.isoformat(),
+                ),
+            )
+        return profile
+
+    def save_packet(
+        self,
+        packet: EditorialPacket,
+        status: str = "candidate",
+        brand_id: str | None = None,
+    ) -> None:
         self._validate_status(status)
+        selected_brand_id = brand_id or self.get_active_brand_id()
+        self.get_brand_profile(selected_brand_id)
         now = _now()
         payload = packet.model_dump_json()
         with self._connect() as connection:
+            existing = connection.execute(
+                "SELECT brand_id FROM editorial_items WHERE content_item_id = ?",
+                (packet.brief.content_item_id,),
+            ).fetchone()
+            if existing and existing["brand_id"] != selected_brand_id:
+                raise ValueError("This story is already tracked by another brand workspace.")
             connection.execute(
                 """
                 INSERT INTO editorial_items
-                    (content_item_id, status, packet_json, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                    (content_item_id, status, packet_json, created_at, updated_at, brand_id)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(content_item_id) DO UPDATE SET
                     packet_json = excluded.packet_json,
                     updated_at = excluded.updated_at
                 """,
-                (packet.brief.content_item_id, status, payload, now, now),
+                (packet.brief.content_item_id, status, payload, now, now, selected_brand_id),
             )
 
-    def list_items(self) -> list[EditorialItemRecord]:
+    def list_items(self, brand_id: str | None = None) -> list[EditorialItemRecord]:
+        selected_brand_id = brand_id or self.get_active_brand_id()
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM editorial_items ORDER BY updated_at DESC"
+                "SELECT * FROM editorial_items WHERE brand_id = ? ORDER BY updated_at DESC",
+                (selected_brand_id,),
             ).fetchall()
         return [self._record(row) for row in rows]
 
-    def dashboard_stats(self) -> dict[str, int]:
+    def dashboard_stats(self, brand_id: str | None = None) -> dict[str, int]:
         """Return compact counts for the local editorial overview."""
 
+        selected_brand_id = brand_id or self.get_active_brand_id()
         with self._connect() as connection:
             status_rows = connection.execute(
-                "SELECT status, COUNT(*) AS total FROM editorial_items GROUP BY status"
+                "SELECT status, COUNT(*) AS total FROM editorial_items "
+                "WHERE brand_id = ? GROUP BY status",
+                (selected_brand_id,),
             ).fetchall()
             draft_count = connection.execute(
-                "SELECT COUNT(*) AS total FROM editorial_drafts"
+                "SELECT COUNT(*) AS total FROM editorial_drafts AS d JOIN editorial_items AS i "
+                "ON i.content_item_id = d.content_item_id WHERE i.brand_id = ?",
+                (selected_brand_id,),
             ).fetchone()["total"]
             reusable_feedback = connection.execute(
-                "SELECT COUNT(*) AS total FROM editorial_feedback "
-                "WHERE scope IN ('global', 'article_type')"
+                "SELECT COUNT(*) AS total FROM editorial_feedback AS f "
+                "JOIN editorial_items AS i ON i.content_item_id = f.content_item_id "
+                "WHERE i.brand_id = ? AND f.scope IN ('global', 'article_type')",
+                (selected_brand_id,),
             ).fetchone()["total"]
         stats = {status: 0 for status in EDITORIAL_STATUSES}
         stats.update({row["status"]: row["total"] for row in status_rows})
@@ -861,11 +982,14 @@ class EditorialStore:
         stats["attention"] = stats["selected"] + stats["needs_revision"]
         return stats
 
-    def get_item(self, content_item_id: str) -> EditorialItemRecord | None:
+    def get_item(
+        self, content_item_id: str, brand_id: str | None = None
+    ) -> EditorialItemRecord | None:
+        selected_brand_id = brand_id or self.get_active_brand_id()
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT * FROM editorial_items WHERE content_item_id = ?",
-                (content_item_id,),
+                "SELECT * FROM editorial_items WHERE content_item_id = ? AND brand_id = ?",
+                (content_item_id, selected_brand_id),
             ).fetchone()
         return self._record(row) if row else None
 
@@ -873,23 +997,25 @@ class EditorialStore:
         self._validate_status(status)
         if status == "approved":
             raise ValueError("Approve the latest draft with a persisted editorial decision.")
+        selected_brand_id = self.get_active_brand_id()
         with self._connect() as connection:
             cursor = connection.execute(
                 "UPDATE editorial_items SET status = ?, updated_at = ? "
-                "WHERE content_item_id = ?",
-                (status, _now(), content_item_id),
+                "WHERE content_item_id = ? AND brand_id = ?",
+                (status, _now(), content_item_id, selected_brand_id),
             )
         if cursor.rowcount != 1:
             raise KeyError(content_item_id)
 
-    def get_brand_profile(self, brand_id: str = DEFAULT_BRAND_ID) -> BrandProfile:
+    def get_brand_profile(self, brand_id: str | None = None) -> BrandProfile:
+        selected_brand_id = brand_id or self.get_active_brand_id()
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT profile_json FROM brands WHERE brand_id = ?",
-                (brand_id,),
+                (selected_brand_id,),
             ).fetchone()
         if row is None:
-            raise KeyError(brand_id)
+            raise KeyError(selected_brand_id)
         return BrandProfile.model_validate_json(row["profile_json"])
 
     def save_brand_profile(self, profile: BrandProfile) -> BrandProfile:
@@ -958,21 +1084,23 @@ class EditorialStore:
         return rule
 
     def get_brand_rule(self, rule_id: str) -> BrandRule | None:
+        selected_brand_id = self.get_active_brand_id()
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT rule_json FROM brand_rules WHERE rule_id = ?",
-                (rule_id,),
+                "SELECT rule_json FROM brand_rules WHERE rule_id = ? AND brand_id = ?",
+                (rule_id, selected_brand_id),
             ).fetchone()
         return BrandRule.model_validate_json(row["rule_json"]) if row else None
 
     def list_brand_rules(
         self,
-        brand_id: str = DEFAULT_BRAND_ID,
+        brand_id: str | None = None,
         channel: BrandRuleChannel | str | None = None,
         enabled: bool | None = None,
     ) -> list[BrandRule]:
+        selected_brand_id = brand_id or self.get_active_brand_id()
         conditions = ["brand_id = ?"]
-        values: list[str | int] = [brand_id]
+        values: list[str | int] = [selected_brand_id]
         if channel is not None:
             parsed_channel = BrandRuleChannel(channel)
             conditions.append("channel = ?")
@@ -1027,10 +1155,11 @@ class EditorialStore:
         return [dict(row) for row in rows]
 
     def list_feedback_signals(
-        self, brand_id: str = DEFAULT_BRAND_ID
+        self, brand_id: str | None = None
     ) -> list[dict[str, str | int]]:
         """Return traceable feedback for review in the Brand Brain learning inbox."""
 
+        selected_brand_id = brand_id or self.get_active_brand_id()
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT f.feedback_id, f.content_item_id, f.dimension, f.signal, "
@@ -1038,7 +1167,7 @@ class EditorialStore:
                 "FROM editorial_feedback AS f "
                 "JOIN editorial_items AS i ON i.content_item_id = f.content_item_id "
                 "WHERE i.brand_id = ? ORDER BY f.feedback_id DESC",
-                (brand_id,),
+                (selected_brand_id,),
             ).fetchall()
         signals = []
         for row in rows:
@@ -1396,10 +1525,13 @@ class EditorialStore:
     def list_social_preferences(self) -> dict[str, list[str]]:
         """Return transparent, reusable feedback grouped by social platform."""
 
+        selected_brand_id = self.get_active_brand_id()
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT platform, signal, note FROM social_feedback "
-                "ORDER BY feedback_id DESC"
+                "SELECT f.platform, f.signal, f.note FROM social_feedback AS f "
+                "JOIN editorial_items AS i ON i.content_item_id = f.content_item_id "
+                "WHERE i.brand_id = ? ORDER BY f.feedback_id DESC",
+                (selected_brand_id,),
             ).fetchall()
         preferences = {platform.value: [] for platform in SocialPlatform}
         for rule in self.list_brand_rules(enabled=True):
@@ -1881,16 +2013,19 @@ class EditorialStore:
         self,
         article_type: str | None = None,
         content_item_id: str | None = None,
+        brand_id: str | None = None,
     ) -> list[dict[str, str | int]]:
         """Return explicit feedback that applies to a future writing assignment."""
 
+        selected_brand_id = brand_id or self.get_active_brand_id()
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT f.feedback_id, f.content_item_id, f.dimension, f.signal, "
                 "f.scope, f.note, f.created_at, i.packet_json "
                 "FROM editorial_feedback AS f "
                 "JOIN editorial_items AS i ON i.content_item_id = f.content_item_id "
-                "ORDER BY f.feedback_id DESC"
+                "WHERE i.brand_id = ? ORDER BY f.feedback_id DESC",
+                (selected_brand_id,),
             ).fetchall()
 
         applicable: list[dict[str, str | int]] = []

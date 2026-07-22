@@ -10,14 +10,14 @@ from .models import (
     EditorialPreferenceProfile,
     PreferenceRule,
 )
-from .store import DEFAULT_BRAND_ID, EditorialStore
+from .store import EditorialStore
 
 
 def build_preference_profile(
     store: EditorialStore,
     article_type: ArticleType | str | None = None,
     content_item_id: str | None = None,
-    brand_id: str = DEFAULT_BRAND_ID,
+    brand_id: str | None = None,
 ) -> EditorialPreferenceProfile:
     """Build a deduplicated profile while retaining evidence of repeated feedback."""
 
@@ -25,6 +25,7 @@ def build_preference_profile(
     feedback = store.list_applicable_feedback(
         article_type=parsed_type.value if parsed_type else None,
         content_item_id=content_item_id,
+        brand_id=brand_id,
     )
     approved_rules = [
         rule

@@ -13,7 +13,7 @@ from src.editorial.image_generation import (
 )
 from src.editorial.store import EditorialStore
 from src.editorial.web import create_app
-from src.editorial.models import VisualBrandProfile, WordPressMediaItem
+from src.editorial.models import BrandProfile, Organization, VisualBrandProfile, WordPressMediaItem
 
 from test_editorial_wordpress import _StubPublisher, _approved_store
 
@@ -169,6 +169,32 @@ def test_image_studio_is_disabled_without_explicit_enablement(tmp_path) -> None:
     assert "Image generation is off" in page.text
     assert "Generate one candidate" in page.text
     assert "disabled" in page.text
+
+
+def test_generated_image_files_are_hidden_from_other_brand_workspaces(tmp_path) -> None:
+    db_path = tmp_path / "editorial.sqlite3"
+    store, packet, _draft = _approved_store(db_path)
+    generator = _StubImageGenerator()
+    client = TestClient(
+        create_app(
+            db_path,
+            image_generator_factory=lambda: generator,
+            image_config_factory=_ready_config,
+            generated_image_dir=tmp_path / "generated-images",
+        )
+    )
+    client.post(
+        f"/items/{packet.brief.content_item_id}/images/generate",
+        data={"style": "editorial illustration", "size": "1536x1024", "quality": "medium"},
+    )
+    asset = store.list_generated_images(packet.brief.content_item_id)[0]
+    organization = store.add_organization(Organization(name="Separate tenant"))
+    separate_brand = store.add_brand(
+        BrandProfile(organization_id=organization.organization_id, name="Separate brand")
+    )
+    store.set_active_brand(separate_brand.brand_id)
+
+    assert client.get(f"/generated-images/{asset.asset_id}").status_code == 404
 
 
 def test_visual_identity_and_reviewed_feedback_shape_future_image_prompts(tmp_path) -> None:

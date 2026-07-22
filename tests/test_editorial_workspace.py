@@ -314,6 +314,73 @@ def test_brand_brain_manages_profile_rules_and_learning_signals(tmp_path) -> Non
     assert "Approved rule" in learning.text
 
 
+def test_workspace_switches_brands_and_isolates_editorial_content(tmp_path) -> None:
+    db_path = tmp_path / "editorial.sqlite3"
+    store = EditorialStore(db_path)
+    codequest_packet = _packet()
+    store.save_packet(codequest_packet)
+    client = TestClient(create_app(db_path))
+
+    organization_response = client.post(
+        "/workspace/organizations",
+        data={"name": "Acme Group"},
+        follow_redirects=False,
+    )
+    acme_organization = next(
+        item for item in store.list_organizations() if item.name == "Acme Group"
+    )
+    brand_response = client.post(
+        "/workspace/brands",
+        data={
+            "organization_id": acme_organization.organization_id,
+            "name": "Acme Developer Platform",
+            "description": "Developer infrastructure for growing teams.",
+        },
+        follow_redirects=False,
+    )
+    acme_brand = next(
+        item for item in store.list_brands() if item.name == "Acme Developer Platform"
+    )
+
+    assert organization_response.status_code == 303
+    assert brand_response.status_code == 303
+    assert store.get_active_brand_id() == acme_brand.brand_id
+    assert store.list_items() == []
+    assert store.get_item(codequest_packet.brief.content_item_id) is None
+    assert "0" in client.get("/").text
+
+    acme_packet = _packet()
+    acme_packet.brief.content_item_id = "rss:acme:workspace-1"
+    acme_packet.evidence.content_item_id = "rss:acme:workspace-1"
+    acme_packet.brief.working_title = "Acme releases a repository insight tool"
+    store.save_packet(acme_packet)
+
+    switched_to_codequest = client.post(
+        "/workspace/switch",
+        data={"brand_id": "brand_codequest"},
+        follow_redirects=False,
+    )
+    codequest_queue = client.get("/editorial")
+    assert switched_to_codequest.status_code == 303
+    assert store.get_item(codequest_packet.brief.content_item_id) is not None
+    assert store.get_item(acme_packet.brief.content_item_id) is None
+    assert "Acme releases" not in codequest_queue.text
+
+    switched_to_acme = client.post(
+        "/workspace/switch",
+        data={"brand_id": acme_brand.brand_id},
+        follow_redirects=False,
+    )
+    acme_queue = client.get("/editorial")
+    workspace = client.get("/workspace")
+    assert switched_to_acme.status_code == 303
+    assert "Acme releases a repository insight tool" in acme_queue.text
+    assert "A developer tool launches a public beta" not in acme_queue.text
+    assert "Acme Developer Platform" in workspace.text
+    assert "CodeQuest" in workspace.text
+    assert "Active brand" in workspace.text
+
+
 def test_workspace_returns_empty_state_and_missing_item(tmp_path) -> None:
     client = TestClient(create_app(tmp_path / "editorial.sqlite3"))
 

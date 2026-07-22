@@ -66,6 +66,7 @@ from .models import (
     DraftParagraph,
     DraftSection,
     GeneratedImageAsset,
+    Organization,
     PreferenceSignal,
     SocialPlatform,
     SocialPostDraft,
@@ -86,7 +87,6 @@ from .social import (
 )
 from .source_control import ConfigError, SourceControlService
 from .store import (
-    DEFAULT_BRAND_ID,
     EDITORIAL_STATUSES,
     FEEDBACK_DIMENSIONS,
     FEEDBACK_SCOPES,
@@ -155,6 +155,7 @@ _ADMIN_STYLE = """
 :root{--sidebar:272px}.site-header{display:none}.sidebar{position:fixed;inset:0 auto 0 0;width:var(--sidebar);
 background:#fff;border-right:1px solid var(--line);padding:22px 16px;display:flex;flex-direction:column;z-index:20}
 .workspace{display:flex;align-items:center;gap:12px;padding:10px 9px 22px;border-bottom:1px solid var(--line);margin-bottom:18px}
+.workspace{text-decoration:none;color:inherit}.workspace:hover strong{color:var(--accent)}
 .workspace-mark{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:var(--ink);color:#fff;
 font-weight:850;letter-spacing:-.04em}.workspace strong,.workspace small{display:block}.workspace strong{font-size:16px}.workspace small{color:var(--muted);font-size:12px}
 .nav-label{margin:12px 11px 7px;color:#9a9fa8;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
@@ -220,6 +221,7 @@ _ICONS = {
     "integrations": "<svg viewBox='0 0 24 24'><path d='M8 12h8M12 8v8'/><path d='M7 4h10v4a4 4 0 0 1 0 8v4H7v-4a4 4 0 0 1 0-8z'/></svg>",
     "memory": "<svg viewBox='0 0 24 24'><path d='M12 3a4 4 0 0 0-4 4v1a4 4 0 0 0 0 8v1a4 4 0 0 0 4 4'/><path d='M12 3a4 4 0 0 1 4 4v1a4 4 0 0 1 0 8v1a4 4 0 0 1-4 4M12 3v18'/></svg>",
     "operations": "<svg viewBox='0 0 24 24'><path d='M4 7h10M4 17h16M18 7h2M4 12h3M11 12h9'/><circle cx='16' cy='7' r='2'/><circle cx='9' cy='12' r='2'/></svg>",
+    "workspace_admin": "<svg viewBox='0 0 24 24'><path d='M4 20V6l8-3 8 3v14'/><path d='M8 9h2M14 9h2M8 13h2M14 13h2M9 20v-3h6v3'/></svg>",
 }
 
 _SOCIAL_LABELS = {
@@ -234,7 +236,18 @@ def _nav_item(key: str, label: str, href: str, active: str) -> str:
     return f"<a class='nav-item{selected}' href='{href}'><span class='nav-icon'>{_ICONS[key]}</span>{label}</a>"
 
 
-def _page(title: str, body: str, active: str = "overview") -> HTMLResponse:
+def _page(
+    title: str,
+    body: str,
+    active: str = "overview",
+    brand_name: str = "CodeQuest",
+    organization_name: str = "CodeQuest workspace",
+) -> HTMLResponse:
+    brand_words = [word for word in brand_name.split() if word]
+    brand_mark = "".join(word[0] for word in brand_words[:2]).upper()
+    if len(brand_words) == 1:
+        brand_mark = "".join(character for character in brand_name if character.isupper())[:2]
+    brand_mark = brand_mark or "BR"
     navigation = "".join(
         (
             _nav_item("overview", "Overview", "/", active),
@@ -246,16 +259,17 @@ def _page(title: str, body: str, active: str = "overview") -> HTMLResponse:
             _nav_item("integrations", "Integrations", "/integrations", active),
             _nav_item("memory", "Brand Brain", "/preferences", active),
             _nav_item("operations", "Operations", "/operations", active),
+            _nav_item("workspace_admin", "Workspace settings", "/workspace", active),
         )
     )
     return HTMLResponse(
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         f"<title>{escape(title)} · CodeQuest</title><style>{_STYLE}{_ADMIN_STYLE}</style></head>"
-        "<body><aside class='sidebar'><div class='workspace'><div class='workspace-mark'>CQ</div>"
-        "<div><strong>CodeQuest</strong><small>Editorial studio</small></div></div>"
+        f"<body><aside class='sidebar'><a class='workspace' href='/workspace'><div class='workspace-mark'>{escape(brand_mark)}</div>"
+        f"<div><strong>{escape(brand_name)}</strong><small>Switch brand workspace</small></div></a>"
         f"<p class='nav-label'>Workspace</p><nav class='side-nav'>{navigation}</nav>"
-        "<div class='sidebar-foot'><span class='status-dot'></span><div><strong>Local workspace</strong>"
+        f"<div class='sidebar-foot'><span class='status-dot'></span><div><strong>{escape(organization_name)}</strong>"
         "<small>Horizon discovery connected</small></div></div></aside>"
         f"<main class='content'><div class='shell'>{body}</div></main></body></html>"
     )
@@ -374,6 +388,17 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="CodeQuest Editorial Workspace")
     store = EditorialStore(db_path)
+
+    def render_page(title: str, body: str, active: str = "overview") -> HTMLResponse:
+        brand = store.get_brand_profile()
+        organization = store.get_organization(brand.organization_id)
+        return _page(
+            title,
+            body,
+            active=active,
+            brand_name=brand.name,
+            organization_name=organization.name,
+        )
     writer_factory = draft_generator_factory or create_ollama_cloud_draft_generator
     bridge_factory = discord_bridge_factory or (
         lambda: DiscordApprovalBridge(DiscordConfig.from_env())
@@ -462,6 +487,115 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return campaign, post, config, selected_mode, scheduled_for, payload
 
+    @app.get("/workspace", response_class=HTMLResponse)
+    def workspace_settings(notice: str = "") -> HTMLResponse:
+        active_brand = store.get_brand_profile()
+        organizations = store.list_organizations()
+        brands = store.list_brands()
+        organization_by_id = {
+            organization.organization_id: organization for organization in organizations
+        }
+        brand_cards = "".join(
+            "<article class='panel integration-card'><div class='integration-card-head'><div>"
+            f"<p class='eyebrow'>{escape(organization_by_id[brand.organization_id].name.upper())}</p>"
+            f"<h2>{escape(brand.name)}</h2></div>"
+            + (
+                "<span class='badge approved'>Active brand</span>"
+                if brand.brand_id == active_brand.brand_id
+                else "<span class='badge'>Available</span>"
+            )
+            + "</div>"
+            f"<p class='muted'>{escape(brand.description or 'Brand context has not been completed yet.')}</p>"
+            f"<div class='integration-details'><div class='integration-detail'><strong>{len(store.list_items(brand.brand_id))}</strong><br>stories</div>"
+            f"<div class='integration-detail'><strong>{len(store.list_brand_rules(brand.brand_id))}</strong><br>rules</div>"
+            f"<div class='integration-detail'><strong>{len(store.list_visual_feedback(brand.brand_id))}</strong><br>visual signals</div></div>"
+            + (
+                "<a class='text-link' href='/preferences'>Manage this brand’s identity →</a>"
+                if brand.brand_id == active_brand.brand_id
+                else f"<form method='post' action='/workspace/switch'><input type='hidden' name='brand_id' value='{escape(brand.brand_id, quote=True)}'><button type='submit'>Switch to this brand</button></form>"
+            )
+            + "</article>"
+            for brand in brands
+        )
+        organization_options = "".join(
+            f"<option value='{escape(organization.organization_id, quote=True)}'>{escape(organization.name)}</option>"
+            for organization in organizations
+        )
+        notice_html = (
+            f"<div class='notice'><strong>{escape(notice)}</strong></div>" if notice else ""
+        )
+        return render_page(
+            "Workspace settings",
+            "<header class='page-head'><p class='eyebrow'>WORKSPACE SETTINGS</p>"
+            "<h1>Manage organisations and <span class='accent'>brands.</span></h1>"
+            "<p class='muted'>Each brand has its own stories, writing rules, visual identity, and learning history. Switching changes the entire editorial workspace.</p></header>"
+            f"{notice_html}<section class='integration-grid'>{brand_cards}</section>"
+            "<div class='layout' style='margin-top:20px'><section class='panel'><p class='eyebrow'>NEW BRAND</p>"
+            "<h2>Add a brand workspace</h2><p class='muted'>Use a separate brand when content should learn a different voice, audience, or visual identity.</p>"
+            "<form method='post' action='/workspace/brands'>"
+            f"<label><span class='field-label'>Organisation</span><select name='organization_id'>{organization_options}</select></label>"
+            "<label><span class='field-label'>Brand name</span><input name='name' required maxlength='100' placeholder='For example: Acme Developer Platform'></label>"
+            "<label><span class='field-label'>Short description</span><textarea name='description' maxlength='600' placeholder='What this brand does and who it serves'></textarea></label>"
+            "<button type='submit'>Create and open brand</button></form></section>"
+            "<aside class='panel'><p class='eyebrow'>NEW ORGANISATION</p><h2>Add an organisation</h2>"
+            "<p class='muted'>An organisation is the future billing and access boundary. It can contain one or more brands.</p>"
+            "<form method='post' action='/workspace/organizations'>"
+            "<label><span class='field-label'>Organisation name</span><input name='name' required maxlength='100' placeholder='For example: Acme Group'></label>"
+            "<button class='button-revise' type='submit'>Add organisation</button></form>"
+            "<div class='cost-note'>This phase isolates content and learning. User invitations, roles, billing, and per-organisation secret vaults come later.</div></aside></div>",
+            active="workspace_admin",
+        )
+
+    @app.post("/workspace/organizations")
+    def create_organization(name: str = Form()) -> RedirectResponse:
+        cleaned_name = name.strip()
+        if not cleaned_name:
+            raise HTTPException(status_code=400, detail="Enter an organisation name.")
+        try:
+            organization = store.add_organization(Organization(name=cleaned_name))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/workspace?notice={quote(organization.name)}%20organisation%20added",
+            status_code=303,
+        )
+
+    @app.post("/workspace/brands")
+    def create_brand(
+        organization_id: str = Form(),
+        name: str = Form(),
+        description: str = Form(""),
+    ) -> RedirectResponse:
+        cleaned_name = name.strip()
+        if not cleaned_name:
+            raise HTTPException(status_code=400, detail="Enter a brand name.")
+        try:
+            brand = store.add_brand(
+                BrandProfile(
+                    organization_id=organization_id,
+                    name=cleaned_name,
+                    description=description.strip(),
+                )
+            )
+            store.set_active_brand(brand.brand_id)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="Choose a valid organisation.") from exc
+        return RedirectResponse(
+            f"/workspace?notice={quote(brand.name)}%20created%20and%20opened",
+            status_code=303,
+        )
+
+    @app.post("/workspace/switch")
+    def switch_brand(brand_id: str = Form()) -> RedirectResponse:
+        try:
+            brand = store.set_active_brand(brand_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Brand workspace not found.") from exc
+        return RedirectResponse(
+            f"/workspace?notice=Now%20working%20in%20{quote(brand.name)}",
+            status_code=303,
+        )
+
     @app.get("/", response_class=HTMLResponse)
     def overview() -> HTMLResponse:
         stats = store.dashboard_stats()
@@ -473,7 +607,7 @@ def create_app(
             f"<p class='muted'>{escape(record.packet.brief.central_angle)}</p></a>"
             for record in recent
         ) or "<article class='panel empty'><p class='muted'>No stories have entered the workspace yet.</p></article>"
-        return _page(
+        return render_page(
             "Overview",
             "<header class='page-head'><p class='eyebrow'>WORKSPACE OVERVIEW</p>"
             "<h1>Your editorial operation, <span class='accent'>at a glance.</span></h1>"
@@ -592,7 +726,7 @@ def create_app(
             "<section class='panel empty'><h2>No matching signals</h2>"
             "<p class='muted'>Adjust the radar filters or run Horizon discovery from Operations.</p></section>"
         )
-        return _page(
+        return render_page(
             "Discovery Radar",
             "<header class='page-head'><p class='eyebrow'>DISCOVERY RADAR</p>"
             "<h1>Find the stories worth <span class='accent'>pursuing.</span></h1>"
@@ -617,7 +751,7 @@ def create_app(
         if tab not in {"sources", "topics"}:
             raise HTTPException(status_code=404, detail="Source control tab not found")
         if not source_control.ready:
-            return _page(
+            return render_page(
                 "Source Control",
                 "<section class='panel empty'><p class='eyebrow'>SOURCE CONTROL</p>"
                 "<h1>Discovery configuration <span class='accent'>needed.</span></h1>"
@@ -759,7 +893,7 @@ def create_app(
             "<small class='muted'>Use the same category names assigned to sources on the Sources tab.</small>"
             "<button type='submit'>Add topic-mix limit</button></form></section></aside></div>"
         )
-        return _page(
+        return render_page(
             "Source Control",
             "<header class='page-head'><p class='eyebrow'>SOURCE CONTROL</p>"
             "<h1>Shape what Horizon <span class='accent'>notices.</span></h1>"
@@ -947,7 +1081,7 @@ def create_app(
             )
         else:
             run_detail = ""
-        return _page(
+        return render_page(
             "Operations",
             "<header class='page-head'><p class='eyebrow'>OPERATIONS</p>"
             "<h1>Automation you can <span class='accent'>see and stop.</span></h1>"
@@ -1080,7 +1214,7 @@ def create_app(
             "<p class='muted'>Environment-managed secrets for this single organisation. No credential editing is offered until encrypted, tenant-scoped storage exists.</p>"
             "</section></aside></div>"
         )
-        return _page(
+        return render_page(
             "Integrations",
             "<header class='page-head'><p class='eyebrow'>INTEGRATIONS</p>"
             "<h1>Every connection, with its <span class='accent'>safety state.</span></h1>"
@@ -1134,7 +1268,7 @@ def create_app(
     def inbox(status: str = "all", q: str = "") -> HTMLResponse:
         all_records = store.list_items()
         if not all_records:
-            return _page(
+            return render_page(
                 "Editorial queue",
                 "<section class='empty panel'><p class='eyebrow'>EDITORIAL INBOX</p>"
                 "<h1>No candidates <span class='accent'>yet</span></h1><p class='muted'>Import a Horizon content item "
@@ -1221,7 +1355,7 @@ def create_app(
             "<div class='empty'><h2>No matching stories</h2>"
             "<p class='muted'>Try another status or clear the search.</p></div>"
         )
-        return _page(
+        return render_page(
             "Editorial queue",
             "<header class='page-head'><p class='eyebrow'>EDITORIAL INBOX</p>"
             "<h1>Find the signal. Shape the <span class='accent'>story.</span></h1>"
@@ -1249,7 +1383,7 @@ def create_app(
             f"<small class='muted'>{escape(draft.created_at.isoformat())} · {len(draft.sections)} sections</small></a>"
             for draft, status in entries
         ) or "<article class='panel empty'><h2>No drafts yet</h2><p class='muted'>Select a story in the editorial queue to generate the first review draft.</p></article>"
-        return _page(
+        return render_page(
             "Draft library",
             "<header class='page-head'><p class='eyebrow'>DRAFT LIBRARY</p>"
             "<h1>Every version, easy to <span class='accent'>find.</span></h1>"
@@ -1431,7 +1565,7 @@ def create_app(
             "<textarea name='alt_text' required placeholder='Describe the image for accessibility'></textarea>"
             f"<button type='submit'{upload_disabled}>Upload to WordPress</button></form></section></aside></div>"
         )
-        return _page(
+        return render_page(
             "Publishing Hub",
             "<header class='page-head'><p class='eyebrow'>PUBLISHING HUB</p>"
             "<h1>Prepare every article for its <span class='accent'>destination.</span></h1>"
@@ -1653,7 +1787,7 @@ def create_app(
     @app.get("/generated-images/{asset_id}")
     def generated_image_file(asset_id: str) -> FileResponse:
         asset = store.get_generated_image(asset_id)
-        if asset is None:
+        if asset is None or store.get_item(asset.content_item_id) is None:
             raise HTTPException(status_code=404, detail="Generated image not found")
         safe_name = Path(asset.file_path).name
         file_path = (image_output_dir / safe_name).resolve()
@@ -2051,7 +2185,7 @@ def create_app(
             "social": social_body,
             "learning": learning_body,
         }
-        return _page(
+        return render_page(
             "Brand Brain",
             "<header class='page-head'><p class='eyebrow'>BRAND BRAIN</p>"
             "<h1>Teach the system how your <span class='accent'>brand thinks.</span></h1>"
@@ -2123,7 +2257,7 @@ def create_app(
             if parsed_channel != BrandRuleChannel.ARTICLE:
                 parsed_type = None
             rule = BrandRule(
-                brand_id=DEFAULT_BRAND_ID,
+                brand_id=store.get_active_brand_id(),
                 channel=parsed_channel,
                 signal=PreferenceSignal(signal),
                 dimension=dimension,
@@ -2245,7 +2379,7 @@ def create_app(
             try:
                 store.add_brand_rule(
                     BrandRule(
-                        brand_id=DEFAULT_BRAND_ID,
+                        brand_id=store.get_active_brand_id(),
                         channel=BrandRuleChannel.ARTICLE,
                         signal=PreferenceSignal(str(signal["signal"])),
                         dimension=str(signal["dimension"]),
@@ -3041,7 +3175,7 @@ def create_app(
             "delivery": "Prepare website and social delivery without mixing their review steps.",
             "learning": "Story feedback and the writing preferences learned from it.",
         }
-        return _page(
+        return render_page(
             brief.working_title,
             "<div class='crumb'><a href='/editorial'>Editorial queue</a><span>›</span>"
             f"<span>{escape(brief.working_title)}</span></div>"
@@ -3103,7 +3237,7 @@ def create_app(
             f"<br><a class='text-link' href='{escape(str(source_url), quote=True)}' target='_blank' rel='noopener'>{escape(str(source_url))}</a></div>"
             for source_id, source_url in draft.source_map.items()
         )
-        return _page(
+        return render_page(
             f"Edit · {draft.title}",
             "<div class='crumb'><a href='/drafts'>Draft library</a><span>›</span>"
             f"<a href='/items/{encoded_id}'>Article review</a><span>›</span><span>Edit draft</span></div>"
@@ -3589,7 +3723,7 @@ def create_app(
                 f"<button class='button-approve' type='submit'>{mode_label} in Buffer</button></form>"
             )
         )
-        return _page(
+        return render_page(
             f"Buffer preview · {_SOCIAL_LABELS[post.platform]}",
             "<div class='crumb'><a href='/editorial'>Editorial queue</a><span>›</span>"
             f"<a href='/items/{encoded_id}?tab=delivery&channel=social'>Social campaign</a><span>›</span><span>Buffer preview</span></div>"
@@ -3704,7 +3838,7 @@ def create_app(
             else "<p class='muted'>No featured image selected.</p>"
         )
         encoded_id = quote(content_item_id, safe="")
-        return _page(
+        return render_page(
             f"WordPress preview · {draft.title}",
             "<div class='crumb'><a href='/drafts'>Draft library</a><span>›</span>"
             f"<a href='/items/{encoded_id}'>Article review</a><span>›</span><span>WordPress preview</span></div>"
