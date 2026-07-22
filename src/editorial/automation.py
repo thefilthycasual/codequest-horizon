@@ -185,13 +185,16 @@ class EditorialAutomationRunner:
             else:
                 run.status = AutomationRunStatus.COMPLETED
                 run.stage = "complete"
-            return self.store.save_automation_run(run)
+            saved = self.store.save_automation_run(run)
+            self.store.checkpoint()
+            return saved
         except Exception as exc:
             run.status = AutomationRunStatus.FAILED
             run.stage = "failed"
             run.error_message = str(exc)[:1_000] or exc.__class__.__name__
             run.finished_at = datetime.now(timezone.utc)
             self.store.save_automation_run(run)
+            self.store.checkpoint()
             return run
         except asyncio.CancelledError:
             run.status = AutomationRunStatus.FAILED
@@ -199,6 +202,7 @@ class EditorialAutomationRunner:
             run.error_message = "The automation run was stopped before it finished."
             run.finished_at = datetime.now(timezone.utc)
             self.store.save_automation_run(run)
+            self.store.checkpoint()
             raise
 
 

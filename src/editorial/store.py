@@ -83,6 +83,12 @@ class EditorialStore:
         connection.execute("PRAGMA journal_mode = WAL")
         return connection
 
+    def checkpoint(self) -> None:
+        """Copy committed WAL frames into the database after a batch boundary."""
+
+        with self._connect() as connection:
+            connection.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
+
     def _initialize(self) -> None:
         with self._connect() as connection:
             connection.execute(
