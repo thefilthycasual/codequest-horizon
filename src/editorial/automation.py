@@ -139,7 +139,10 @@ class EditorialAutomationRunner:
             self.store.save_automation_run(run)
             imported: list[tuple[str, int]] = []
             for item in candidates:
-                if self.store.get_item(item.id) is not None:
+                existing = self.store.get_item(item.id)
+                if existing is not None:
+                    if existing.packet.discovery is None:
+                        self.store.save_packet(build_editorial_packet(item))
                     run.skipped_count += 1
                     continue
                 if len(imported) >= self.config.max_candidates:

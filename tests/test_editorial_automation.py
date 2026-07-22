@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.editorial.automation import AutomationConfig, EditorialAutomationRunner
+from src.editorial.briefing import build_editorial_packet
 from src.editorial.models import (
     ArticleDraft,
     AutomationRunStatus,
@@ -101,6 +102,27 @@ def test_automation_does_not_auto_select_an_off_topic_high_score(tmp_path) -> No
     assert run.selected_count == 1
     assert store.get_item(relevant.id).status == "selected"
     assert store.get_item(off_topic.id).status == "candidate"
+
+
+def test_automation_backfills_legacy_intelligence_without_changing_status(tmp_path) -> None:
+    store = EditorialStore(tmp_path / "editorial.sqlite3")
+    item = _item(1, 9)
+    packet = build_editorial_packet(item)
+    packet.discovery = None
+    store.save_packet(packet)
+    store.set_status(item.id, "selected")
+
+    async def discover(_hours: int):
+        return [item]
+
+    run = asyncio.run(
+        EditorialAutomationRunner(store, AutomationConfig(), discover).run_once()
+    )
+
+    refreshed = store.get_item(item.id)
+    assert run.skipped_count == 1
+    assert refreshed.status == "selected"
+    assert refreshed.packet.discovery.ai_score == 9
 
 
 def test_automation_can_prepare_unapproved_draft_when_explicitly_enabled(tmp_path) -> None:

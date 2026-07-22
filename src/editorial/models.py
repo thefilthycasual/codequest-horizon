@@ -143,11 +143,32 @@ class EditorialBrief(BaseModel):
     status: str = "draft"
 
 
+class DiscoveryInsight(BaseModel):
+    """Safe, durable snapshot of Horizon's discovery and enrichment signals."""
+
+    horizon_item_id: str
+    source_type: SourceType
+    author: str = ""
+    published_at: datetime
+    fetched_at: datetime
+    ai_score: float | None = Field(default=None, ge=0, le=10)
+    ai_reason: str = ""
+    ai_summary: str = ""
+    ai_tags: list[str] = Field(default_factory=list)
+    category: str = ""
+    engagement: dict[str, int | float | str] = Field(default_factory=dict)
+    discussion_url: str = ""
+    detailed_summary: str = ""
+    background: str = ""
+    community_discussion: str = ""
+
+
 class EditorialPacket(BaseModel):
     """Complete, serializable handoff from the news radar to an editor."""
 
     brief: EditorialBrief
     evidence: EvidencePack
+    discovery: DiscoveryInsight | None = None
 
 
 class PreferenceRule(BaseModel):

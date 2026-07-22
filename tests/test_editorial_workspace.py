@@ -23,8 +23,17 @@ def _packet():
         published_at=datetime(2026, 7, 21, tzinfo=timezone.utc),
         ai_reason="The tool may simplify code review for small teams.",
         ai_summary="A public beta is now available.",
+        ai_score=8.5,
+        ai_tags=["developer-tools", "code-review"],
         metadata={
             "feed_name": "Example Engineering",
+            "category": "developer-tools",
+            "views": 1200,
+            "reply_count": 14,
+            "discussion_url": "https://community.example/beta",
+            "detailed_summary_en": "The public beta introduces repository-aware code review.",
+            "background_en": "The product began as a closed team preview.",
+            "community_discussion_en": "Early users are comparing setup time and accuracy.",
             "sources": [
                 {
                     "url": "https://review.example/beta",
@@ -210,6 +219,33 @@ def test_editorial_queue_supports_filter_search_and_quick_selection(tmp_path) ->
     assert selected.headers["location"] == "/editorial?status=selected"
     assert "Open workspace" in client.get(selected.headers["location"]).text
     assert "No matching stories" in client.get("/editorial?q=not-a-real-story").text
+
+
+def test_discovery_radar_and_story_intelligence_are_actionable(tmp_path) -> None:
+    db_path = tmp_path / "editorial.sqlite3"
+    packet = _packet()
+    EditorialStore(db_path).save_packet(packet)
+    client = TestClient(create_app(db_path))
+    item_id = packet.brief.content_item_id
+
+    radar = client.get("/discovery?q=code-review&source=rss&min_score=8&sort=score")
+    intelligence = client.get(f"/items/{item_id}?tab=intelligence")
+
+    assert radar.status_code == 200
+    assert "Discovery Radar" in radar.text
+    assert "8.5" in radar.text
+    assert "Select story" in radar.text
+    assert "repository-aware" in intelligence.text
+    assert "Engagement signals" in intelligence.text
+    assert "1,200" not in intelligence.text  # values are preserved, not cosmetically rewritten
+    assert "1200" in intelligence.text
+
+    selected = client.post(
+        f"/items/{item_id}/status",
+        data={"status": "selected", "return_to": "discovery"},
+        follow_redirects=False,
+    )
+    assert selected.headers["location"] == "/discovery"
 
 
 def test_brand_brain_manages_profile_rules_and_learning_signals(tmp_path) -> None:

@@ -168,17 +168,21 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 .run-list{display:grid;gap:10px}.run-row{display:grid;grid-template-columns:minmax(150px,.8fr) minmax(210px,1.4fr) auto;gap:18px;align-items:center;padding:15px 0;border-top:1px solid var(--line)}.run-row:first-child{border-top:0}.run-counts{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12px}.badge.completed{color:var(--success);background:#eefaf5;border-color:#cdebdc}.badge.running{color:#1d4ed8;background:#eff6ff;border-color:#bfdbfe}.badge.partial{color:var(--warning);background:#fff7ed;border-color:#fed7aa}.badge.failed{color:var(--danger);background:#fef2f2;border-color:#fecaca}
 .run-row{text-decoration:none;border-radius:10px;padding-left:10px;padding-right:10px}.run-row:hover,.run-row.active{background:#f7f7f8}.run-detail{margin:0 0 24px}.run-detail-head{display:flex;justify-content:space-between;gap:16px;align-items:start}.run-detail h2{margin-top:8px}.run-stories{display:grid;gap:8px;margin-top:16px}.run-story{padding:10px 12px;border:1px solid var(--line);border-radius:10px;text-decoration:none;font-weight:700}.run-story:hover{border-color:#f2c3a3}.queue-tools{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:14px}.queue-tools form{display:grid;grid-template-columns:1fr auto;gap:8px;width:min(100%,420px);justify-self:end}.queue-tools button{width:auto;padding-left:22px;padding-right:22px}.filter-tabs{display:flex;gap:7px;overflow:auto;padding-bottom:3px}.filter-tab{white-space:nowrap;text-decoration:none;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);font-weight:700}.filter-tab.active{background:var(--ink);border-color:var(--ink);color:#fff}.queue-list{display:grid}.queue-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,.25fr);gap:22px;padding:22px 4px;border-top:1px solid var(--line);align-items:center}.queue-row:first-child{border-top:0}.queue-row h2{margin:8px 0 6px}.queue-row h2 a{text-decoration:none}.queue-row h2 a:hover{color:#c75b17}.queue-row p{margin:0}.queue-summary{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.queue-side{text-align:right}.queue-side .meta{justify-content:flex-end;margin-top:0}.queue-side form{margin-top:10px}.queue-side .text-link{display:inline-block;margin-top:10px}.compact-button{padding:8px 14px;font-size:13px}
 .brain-tabs{display:flex;gap:6px;padding:6px;background:#eceef1;border-radius:13px;margin-bottom:24px;overflow:auto}.brain-tab{white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.brain-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}.profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}.profile-grid .span-2{grid-column:1/-1}.profile-grid textarea{min-height:86px}.brain-rule-list{display:grid;gap:14px}.brain-rule{border:1px solid var(--line);border-radius:14px;padding:17px;background:#fff}.brain-rule.disabled{opacity:.62}.brain-rule-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}.brain-rule form{display:grid;grid-template-columns:150px 150px 100px;gap:10px}.brain-rule form .rule-instruction{grid-column:1/-1}.brain-rule form .rule-enabled{display:flex;align-items:center;gap:8px}.brain-rule form .rule-enabled input{width:auto}.brain-rule form button{grid-column:1/-1}.memory-preview{max-height:430px;overflow:auto}.learning-signal{padding:17px 0;border-top:1px solid var(--line)}.learning-signal:first-of-type{border-top:0}.learning-signal p{margin:8px 0}.promote-form{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px}.promote-form button{width:auto}.coverage-list{display:grid;gap:9px}.coverage-row{display:flex;justify-content:space-between;gap:12px;padding-top:9px;border-top:1px solid var(--line)}
+.radar-tools{display:grid;grid-template-columns:minmax(220px,1fr) 180px 150px 170px auto;gap:10px;margin-bottom:20px}.radar-tools button{width:auto;padding-left:22px;padding-right:22px}.radar-list{display:grid;gap:12px}.radar-row{display:grid;grid-template-columns:86px minmax(0,1fr) 190px;gap:20px;align-items:center}.score-box{display:grid;place-items:center;align-content:center;min-height:82px;border-radius:15px;background:var(--ink);color:#fff}.score-box strong{font-size:27px;line-height:1}.score-box small{font-size:10px;line-height:1.25;text-align:center;text-transform:uppercase;letter-spacing:.05em;opacity:.68}.score-box.pending{background:#f0f1f3;color:var(--muted)}.radar-copy h2{margin:6px 0}.radar-copy h2 a{text-decoration:none}.radar-copy h2 a:hover{color:var(--accent)}.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.tag{padding:3px 8px;border-radius:999px;background:var(--accent-soft);color:#b85618;font-size:11px;font-weight:750}.radar-side{text-align:right}.radar-side .meta{justify-content:flex-end}.intelligence-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.signal-card{padding:17px;border:1px solid var(--line);border-radius:14px;background:#fafafa}.signal-card small,.signal-card strong{display:block}.signal-card strong{font-size:18px;margin-top:3px}.insight-copy{white-space:pre-wrap}.engagement-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.engagement-item{padding:10px 12px;border-radius:10px;background:#f7f7f8}.engagement-item strong,.engagement-item small{display:block}
 @media(max-width:980px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:820px){.sidebar{position:static;width:auto;padding:12px}.workspace{padding-bottom:12px;margin-bottom:8px}.workspace small,.nav-label,.sidebar-foot{display:none}
 .side-nav{display:flex;overflow:auto}.nav-item{white-space:nowrap}.content{margin-left:0}.shell{padding:30px 18px 70px}.story-tabs{border-radius:10px}.story-tab{padding:8px 12px}}
 @media(max-width:700px){.queue-tools{grid-template-columns:1fr}.queue-row{grid-template-columns:1fr}.queue-side{text-align:left}.queue-side .meta{justify-content:flex-start}.queue-side form{max-width:230px}}
 @media(max-width:700px){.profile-grid,.brain-rule form{grid-template-columns:1fr}.profile-grid .span-2,.brain-rule form .rule-instruction,.brain-rule form button{grid-column:1}.promote-form{grid-template-columns:1fr}.promote-form button{width:100%}}
+@media(max-width:900px){.radar-tools{grid-template-columns:1fr 1fr}.radar-tools button{width:100%}.radar-row{grid-template-columns:70px minmax(0,1fr)}.radar-side{grid-column:2;text-align:left}.radar-side .meta{justify-content:flex-start}}
+@media(max-width:620px){.radar-tools,.intelligence-grid{grid-template-columns:1fr}.radar-row{grid-template-columns:1fr}.score-box{min-height:64px}.radar-side{grid-column:1}}
 @media(max-width:560px){.run-row{grid-template-columns:1fr}.stat-grid{grid-template-columns:1fr 1fr}.queue-tools form{grid-template-columns:1fr}.queue-tools button{width:100%}}
 @media(max-width:480px){.nav-item{font-size:13px;padding:9px}.nav-icon{display:none}}
 """
 
 _ICONS = {
     "overview": "<svg viewBox='0 0 24 24'><rect x='3' y='3' width='7' height='7' rx='1'/><rect x='14' y='3' width='7' height='7' rx='1'/><rect x='3' y='14' width='7' height='7' rx='1'/><rect x='14' y='14' width='7' height='7' rx='1'/></svg>",
+    "discovery": "<svg viewBox='0 0 24 24'><circle cx='11' cy='11' r='7'/><path d='m16 16 5 5M11 7v8M7 11h8'/></svg>",
     "editorial": "<svg viewBox='0 0 24 24'><path d='M4 5h16v14H4z'/><path d='M8 9h8M8 13h8M8 17h5'/></svg>",
     "drafts": "<svg viewBox='0 0 24 24'><path d='M6 3h9l4 4v14H6z'/><path d='M14 3v5h5M9 12h6M9 16h6'/></svg>",
     "memory": "<svg viewBox='0 0 24 24'><path d='M12 3a4 4 0 0 0-4 4v1a4 4 0 0 0 0 8v1a4 4 0 0 0 4 4'/><path d='M12 3a4 4 0 0 1 4 4v1a4 4 0 0 1 0 8v1a4 4 0 0 1-4 4M12 3v18'/></svg>",
@@ -201,6 +205,7 @@ def _page(title: str, body: str, active: str = "overview") -> HTMLResponse:
     navigation = "".join(
         (
             _nav_item("overview", "Overview", "/", active),
+            _nav_item("discovery", "Discovery Radar", "/discovery", active),
             _nav_item("editorial", "Editorial queue", "/editorial", active),
             _nav_item("drafts", "Draft library", "/drafts", active),
             _nav_item("memory", "Brand Brain", "/preferences", active),
@@ -434,6 +439,130 @@ def create_app(
             "</section><div class='section-head'><h2>Recent stories</h2><a class='text-link' href='/editorial'>View editorial queue →</a></div>"
             f"<section class='grid'>{cards}</section>",
             active="overview",
+        )
+
+    @app.get("/discovery", response_class=HTMLResponse)
+    def discovery_radar(
+        q: str = "", source: str = "all", min_score: float = 0, sort: str = "score"
+    ) -> HTMLResponse:
+        if sort not in {"score", "newest"}:
+            raise HTTPException(status_code=404, detail="Discovery sort not found")
+        min_score = min(10, max(0, min_score))
+        all_records = store.list_items()
+        source_values = sorted(
+            {
+                record.packet.discovery.source_type.value
+                for record in all_records
+                if record.packet.discovery is not None
+            }
+        )
+        if source != "all" and source not in source_values:
+            raise HTTPException(status_code=404, detail="Discovery source not found")
+        search = q.strip().casefold()
+        records = []
+        for record in all_records:
+            insight = record.packet.discovery
+            score = insight.ai_score if insight and insight.ai_score is not None else None
+            searchable = " ".join(
+                [
+                    record.packet.brief.working_title,
+                    record.packet.brief.central_angle,
+                    *(insight.ai_tags if insight else []),
+                    insight.ai_summary if insight else "",
+                    insight.ai_reason if insight else "",
+                ]
+            ).casefold()
+            if search and search not in searchable:
+                continue
+            if source != "all" and (not insight or insight.source_type.value != source):
+                continue
+            if min_score and (score is None or score < min_score):
+                continue
+            records.append(record)
+        records.sort(
+            key=lambda record: (
+                record.packet.discovery.ai_score
+                if record.packet.discovery and record.packet.discovery.ai_score is not None
+                else -1
+            )
+            if sort == "score"
+            else (
+                record.packet.discovery.published_at.timestamp()
+                if record.packet.discovery
+                else 0
+            ),
+            reverse=True,
+        )
+        scored_count = sum(
+            record.packet.discovery is not None
+            and record.packet.discovery.ai_score is not None
+            for record in all_records
+        )
+        high_signal = sum(
+            record.packet.discovery is not None
+            and record.packet.discovery.ai_score is not None
+            and record.packet.discovery.ai_score >= 8
+            for record in all_records
+        )
+        source_options = "".join(
+            f"<option value='{escape(value, quote=True)}'{' selected' if value == source else ''}>"
+            f"{escape(value.replace('_', ' ').title())}</option>"
+            for value in source_values
+        )
+        rows = []
+        for record in records:
+            packet = record.packet
+            insight = packet.discovery
+            encoded_id = quote(packet.brief.content_item_id, safe="")
+            if insight and insight.ai_score is not None:
+                score_box = f"<div class='score-box'><strong>{insight.ai_score:.1f}</strong><small>Horizon score</small></div>"
+            else:
+                score_box = "<div class='score-box pending'><strong>—</strong><small>Awaiting refresh</small></div>"
+            tags = "".join(
+                f"<span class='tag'>{escape(tag)}</span>" for tag in (insight.ai_tags if insight else [])[:6]
+            )
+            source_label = insight.source_type.value if insight else "legacy"
+            published = _display_time(insight.published_at) if insight else "Awaiting Horizon refresh"
+            reason = (
+                insight.ai_reason or insight.ai_summary
+                if insight
+                else "This legacy story remains usable. Its intelligence will be backfilled when Horizon discovers it again."
+            )
+            action = (
+                f"<form method='post' action='/items/{encoded_id}/status'><input type='hidden' name='status' value='selected'>"
+                "<input type='hidden' name='return_to' value='discovery'><button class='compact-button' type='submit'>Select story</button></form>"
+                if record.status == "candidate"
+                else f"<a class='text-link' href='/items/{encoded_id}?tab=intelligence'>Open intelligence →</a>"
+            )
+            rows.append(
+                f"<article class='panel radar-row'>{score_box}<div class='radar-copy'>"
+                f"<span class='badge {escape(record.status)}'>{escape(record.status.replace('_', ' '))}</span> "
+                f"<span class='badge'>{escape(source_label)}</span><h2><a href='/items/{encoded_id}?tab=intelligence'>{escape(packet.brief.working_title)}</a></h2>"
+                f"<p class='muted'>{escape(reason)}</p><div class='tags'>{tags}</div></div>"
+                f"<div class='radar-side'><small class='muted'>{escape(published)}</small><div class='meta'><span>{len(packet.evidence.sources)} sources</span></div>{action}</div></article>"
+            )
+        radar_rows = "".join(rows) or (
+            "<section class='panel empty'><h2>No matching signals</h2>"
+            "<p class='muted'>Adjust the radar filters or run Horizon discovery from Operations.</p></section>"
+        )
+        return _page(
+            "Discovery Radar",
+            "<header class='page-head'><p class='eyebrow'>DISCOVERY RADAR</p>"
+            "<h1>Find the stories worth <span class='accent'>pursuing.</span></h1>"
+            "<p class='muted'>Horizon scoring and enrichment, preserved for editorial judgment.</p></header>"
+            "<section class='stat-grid'>"
+            f"<article class='stat-card'><small>Tracked stories</small><strong class='stat-value'>{len(all_records)}</strong><span class='muted'>in editorial storage</span></article>"
+            f"<article class='stat-card'><small>Scored</small><strong class='stat-value'>{scored_count}</strong><span class='muted'>with Horizon intelligence</span></article>"
+            f"<article class='stat-card'><small>High signal</small><strong class='stat-value'>{high_signal}</strong><span class='muted'>score 8 or above</span></article>"
+            f"<article class='stat-card'><small>Source types</small><strong class='stat-value'>{len(source_values)}</strong><span class='muted'>represented in the radar</span></article></section>"
+            "<form class='radar-tools' method='get' action='/discovery'>"
+            f"<input name='q' value='{escape(q, quote=True)}' placeholder='Search signals, summaries or tags'>"
+            f"<select name='source'><option value='all'>All sources</option>{source_options}</select>"
+            f"<input type='number' name='min_score' min='0' max='10' step='0.5' value='{min_score:g}' aria-label='Minimum score'>"
+            f"<select name='sort'><option value='score'{' selected' if sort == 'score' else ''}>Highest score</option><option value='newest'{' selected' if sort == 'newest' else ''}>Newest first</option></select>"
+            "<button type='submit'>Apply</button></form>"
+            f"<section class='radar-list'>{radar_rows}</section>",
+            active="discovery",
         )
 
     @app.get("/operations", response_class=HTMLResponse)
@@ -1062,7 +1191,7 @@ def create_app(
     def detail(
         content_item_id: str, tab: str = "overview", channel: str = "wordpress"
     ) -> HTMLResponse:
-        allowed_tabs = {"overview", "editor", "review", "delivery", "learning"}
+        allowed_tabs = {"overview", "intelligence", "editor", "review", "delivery", "learning"}
         if tab not in allowed_tabs:
             raise HTTPException(status_code=404, detail="Story tab not found")
         if channel not in {"wordpress", "social"}:
@@ -1554,6 +1683,55 @@ def create_app(
         feedback_history_panel = (
             f"<section class='panel'><h2>Feedback history</h2>{feedback_html}</section>"
         )
+        insight = packet.discovery
+        if insight is None:
+            intelligence_body = (
+                "<section class='panel empty'><p class='eyebrow'>LEGACY STORY</p>"
+                "<h2>Intelligence is awaiting a Horizon refresh</h2>"
+                "<p class='muted'>The assignment and evidence remain available. When Horizon sees this story again, its score, rationale, tags, enrichment and engagement will be added without changing the editorial state.</p>"
+                "<a class='text-link' href='/operations'>Open Operations →</a></section>"
+            )
+        else:
+            score_value = f"{insight.ai_score:.1f} / 10" if insight.ai_score is not None else "Not scored"
+            insight_tags = "".join(
+                f"<span class='tag'>{escape(tag)}</span>" for tag in insight.ai_tags
+            ) or "<span class='muted'>No AI tags recorded.</span>"
+            engagement = "".join(
+                "<div class='engagement-item'>"
+                f"<strong>{escape(str(value))}</strong><small class='muted'>{escape(key.replace('_', ' ').title())}</small></div>"
+                for key, value in insight.engagement.items()
+            ) or "<p class='muted'>This source did not provide public engagement metrics.</p>"
+            discussion_link = (
+                f"<p><a class='text-link' href='{escape(insight.discussion_url, quote=True)}' target='_blank' rel='noopener'>Open source discussion →</a></p>"
+                if insight.discussion_url.startswith(("https://", "http://"))
+                else ""
+            )
+            enrichment_sections = "".join(
+                f"<section class='panel'><h2>{label}</h2><p class='insight-copy'>{escape(value)}</p></section>"
+                for label, value in (
+                    ("Detailed summary", insight.detailed_summary),
+                    ("Background", insight.background),
+                    ("Community discussion", insight.community_discussion),
+                )
+                if value
+            ) or "<section class='panel'><h2>Enrichment</h2><p class='muted'>No extended enrichment was returned for this story.</p></section>"
+            intelligence_body = (
+                "<div class='layout'><section class='stack'>"
+                "<section class='panel'><p class='eyebrow'>HORIZON ASSESSMENT</p>"
+                f"<div class='intelligence-grid'><div class='signal-card'><small class='muted'>Editorial score</small><strong>{escape(score_value)}</strong></div>"
+                f"<div class='signal-card'><small class='muted'>Category</small><strong>{escape(insight.category or 'Uncategorised')}</strong></div>"
+                f"<div class='signal-card'><small class='muted'>Source</small><strong>{escape(insight.source_type.value.replace('_', ' ').title())}</strong></div>"
+                f"<div class='signal-card'><small class='muted'>Author</small><strong>{escape(insight.author or 'Not supplied')}</strong></div></div>"
+                f"<h3>Why Horizon surfaced it</h3><p>{escape(insight.ai_reason or 'No score rationale was returned.')}</p>"
+                f"<h3>Discovery summary</h3><p>{escape(insight.ai_summary or 'No discovery summary was returned.')}</p>"
+                f"<div class='tags'>{insight_tags}</div></section>{enrichment_sections}</section>"
+                "<aside class='stack'><section class='panel'><h2>Timeline</h2>"
+                f"<p><small class='muted'>Published</small><br><strong>{escape(_display_time(insight.published_at))}</strong></p>"
+                f"<p><small class='muted'>Captured</small><br><strong>{escape(_display_time(insight.fetched_at))}</strong></p>"
+                f"{discussion_link}</section><section class='panel'><h2>Engagement signals</h2><div class='engagement-list'>{engagement}</div></section>"
+                f"<section class='panel'><h2>Evidence coverage</h2><p><strong>{len(packet.evidence.sources)}</strong> saved source(s)</p>"
+                f"<p class='muted'>{len(packet.evidence.supporting_sources)} supporting source(s) beyond the primary item.</p></section></aside></div>"
+            )
         tab_bodies = {
             "overview": (
                 "<div class='layout'><section class='stack'>"
@@ -1563,6 +1741,7 @@ def create_app(
                 f"<h2>Research gaps</h2><ul class='questions'>{questions}</ul></article></section>"
                 f"<aside class='stack'><article class='panel'><h2>Evidence</h2>{sources}</article></aside></div>"
             ),
+            "intelligence": intelligence_body,
             "editor": (
                 "<div class='layout'><section class='stack'>"
                 f"{_draft_html(latest_draft, edit_href)}</section><aside class='stack'>{versions_panel}</aside></div>"
@@ -1582,6 +1761,11 @@ def create_app(
         }
         tab_labels = (
             ("overview", "Overview", ""),
+            (
+                "intelligence",
+                "Intelligence",
+                f"{packet.discovery.ai_score:.1f}" if packet.discovery and packet.discovery.ai_score is not None else "",
+            ),
             ("editor", "Editor", str(len(draft_versions)) if draft_versions else ""),
             ("review", "Review", ""),
             (
@@ -1600,6 +1784,7 @@ def create_app(
         )
         descriptions = {
             "overview": "Assignment, required facts, research gaps, and saved evidence.",
+            "intelligence": "Horizon score, rationale, enrichment, engagement, and source context.",
             "editor": "Read or edit the latest article while preserving every version.",
             "review": "Quality checks, workflow state, and the authoritative editorial decision.",
             "delivery": "Prepare website and social delivery without mixing their review steps.",
@@ -1790,11 +1975,12 @@ def create_app(
             raise HTTPException(status_code=404, detail="Editorial item not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        destination = (
-            "/editorial?status=selected"
-            if return_to == "editorial"
-            else f"/items/{quote(content_item_id, safe='')}?tab=review"
-        )
+        if return_to == "editorial":
+            destination = "/editorial?status=selected"
+        elif return_to == "discovery":
+            destination = "/discovery"
+        else:
+            destination = f"/items/{quote(content_item_id, safe='')}?tab=review"
         return RedirectResponse(destination, status_code=303)
 
     @app.post("/items/{content_item_id}/draft")

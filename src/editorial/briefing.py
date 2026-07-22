@@ -5,7 +5,14 @@ from html import unescape
 from typing import Any
 
 from ..models import ContentItem
-from .models import ArticleType, EditorialBrief, EditorialPacket, EvidencePack, EvidenceSource
+from .models import (
+    ArticleType,
+    DiscoveryInsight,
+    EditorialBrief,
+    EditorialPacket,
+    EvidencePack,
+    EvidenceSource,
+)
 
 
 _HTML_TAG = re.compile(r"<[^>]+>")
@@ -73,6 +80,54 @@ def _optional_text(value: Any) -> str | None:
     return text or None
 
 
+def _discovery_insight(item: ContentItem) -> DiscoveryInsight:
+    metadata = item.metadata
+    engagement: dict[str, int | float | str] = {}
+    for key in (
+        "score",
+        "descendants",
+        "favorite_count",
+        "retweet_count",
+        "reply_count",
+        "views",
+        "bookmarks",
+        "upvote_ratio",
+    ):
+        value = metadata.get(key)
+        if isinstance(value, (int, float, str)) and str(value).strip():
+            engagement[key] = value
+    tags = list(dict.fromkeys(str(tag).strip() for tag in item.ai_tags if str(tag).strip()))
+    return DiscoveryInsight(
+        horizon_item_id=item.id,
+        source_type=item.source_type,
+        author=item.author or "",
+        published_at=item.published_at,
+        fetched_at=item.fetched_at,
+        ai_score=item.ai_score,
+        ai_reason=_plain_text(item.ai_reason, 2_000),
+        ai_summary=_plain_text(item.ai_summary, 4_000),
+        ai_tags=tags,
+        category=_plain_text(_optional_text(metadata.get("category")), 200),
+        engagement=engagement,
+        discussion_url=_plain_text(_optional_text(metadata.get("discussion_url")), 2_000),
+        detailed_summary=_plain_text(
+            _optional_text(metadata.get("detailed_summary_en"))
+            or _optional_text(metadata.get("detailed_summary")),
+            12_000,
+        ),
+        background=_plain_text(
+            _optional_text(metadata.get("background_en"))
+            or _optional_text(metadata.get("background")),
+            12_000,
+        ),
+        community_discussion=_plain_text(
+            _optional_text(metadata.get("community_discussion_en"))
+            or _optional_text(metadata.get("community_discussion")),
+            12_000,
+        ),
+    )
+
+
 def build_editorial_packet(item: ContentItem) -> EditorialPacket:
     """Convert one filtered Horizon item into an editable CodeQuest handoff.
 
@@ -125,4 +180,4 @@ def build_editorial_packet(item: ContentItem) -> EditorialPacket:
         required_facts=required_facts,
         uncertainty_notes=list(unresolved),
     )
-    return EditorialPacket(brief=brief, evidence=evidence)
+    return EditorialPacket(brief=brief, evidence=evidence, discovery=_discovery_insight(item))

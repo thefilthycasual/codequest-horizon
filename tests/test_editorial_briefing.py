@@ -18,10 +18,17 @@ def _item(**overrides) -> ContentItem:
         "published_at": datetime(2026, 7, 21, tzinfo=timezone.utc),
         "ai_summary": "Example released a coding assistant for developers.",
         "ai_reason": "The release may change how junior developers review code.",
+        "ai_score": 8.7,
         "ai_tags": ["developer-tools", "open-source"],
         "metadata": {
             "feed_name": "Example Engineering",
             "category": "developer-tools",
+            "views": 4200,
+            "reply_count": 18,
+            "discussion_url": "https://community.example/thread/1",
+            "detailed_summary_en": "The release adds repository-aware review workflows.",
+            "background_en": "The company previously offered a private preview.",
+            "community_discussion_en": "Developers are discussing accuracy and pricing.",
             "sources": [
                 {
                     "url": "https://independent.example/review",
@@ -43,6 +50,13 @@ def test_builds_typed_editorial_handoff_from_horizon_item() -> None:
     assert packet.evidence.primary_source.excerpt == "The assistant is available today."
     assert len(packet.evidence.supporting_sources) == 1
     assert packet.evidence.unresolved_questions == []
+    assert packet.discovery is not None
+    assert packet.discovery.ai_score == 8.7
+    assert packet.discovery.ai_tags == ["developer-tools", "open-source"]
+    assert packet.discovery.engagement == {"reply_count": 18, "views": 4200}
+    assert packet.discovery.detailed_summary.startswith("The release adds")
+    assert packet.discovery.background.startswith("The company previously")
+    assert packet.discovery.community_discussion.startswith("Developers are discussing")
 
 
 def test_missing_body_and_corroboration_are_visible_not_invented() -> None:
