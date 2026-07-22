@@ -37,8 +37,37 @@ services:
       - BUFFER_CHANNEL_ID_FACEBOOK
       - BUFFER_SCHEDULE_TIMEZONE
       - BUFFER_DRY_RUN
+      - AUTOMATION_ENABLED
+      - AUTOMATION_INTERVAL_MINUTES
+      - AUTOMATION_LOOKBACK_HOURS
+      - AUTOMATION_MAX_CANDIDATES
+      - AUTOMATION_AUTO_SELECT_COUNT
+      - AUTOMATION_AUTO_GENERATE
+      - AUTOMATION_DISCOVERY_CONFIG
     ports:
       - "127.0.0.1:8765:8765"
     entrypoint: ["uv", "run", "codequest-workspace"]
     command: ["serve", "--host", "0.0.0.0", "--port", "8765"]
+    restart: unless-stopped
+
+  automation:
+    profiles: ["automation"]
+    build: .
+    container_name: codequest-automation
+    volumes:
+      - ./data:/app/data
+    environment:
+      - OLLAMA_BASE_URL
+      - OLLAMA_API_KEY
+      - OLLAMA_MODEL_RESEARCH
+      - OLLAMA_MODEL_WRITER
+      - AUTOMATION_ENABLED
+      - AUTOMATION_INTERVAL_MINUTES
+      - AUTOMATION_LOOKBACK_HOURS
+      - AUTOMATION_MAX_CANDIDATES
+      - AUTOMATION_AUTO_SELECT_COUNT
+      - AUTOMATION_AUTO_GENERATE
+      - AUTOMATION_DISCOVERY_CONFIG
+    entrypoint: ["uv", "run", "codequest-workspace"]
+    command: ["automation", "worker"]
     restart: unless-stopped

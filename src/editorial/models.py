@@ -316,3 +316,29 @@ class BufferDelivery(BaseModel):
     error_message: str = ""
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class AutomationRunStatus(str, Enum):
+    """Durable state for one bounded discovery-to-draft automation run."""
+
+    RUNNING = "running"
+    COMPLETED = "completed"
+    PARTIAL = "partial"
+    FAILED = "failed"
+
+
+class AutomationRun(BaseModel):
+    """Operational record for an automation run without storing credentials."""
+
+    run_id: str = Field(default_factory=lambda: f"automation_{uuid4().hex}")
+    status: AutomationRunStatus = AutomationRunStatus.RUNNING
+    trigger: str = "manual"
+    stage: str = "starting"
+    discovered_count: int = 0
+    imported_count: int = 0
+    selected_count: int = 0
+    drafted_count: int = 0
+    skipped_count: int = 0
+    error_message: str = ""
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    finished_at: datetime | None = None

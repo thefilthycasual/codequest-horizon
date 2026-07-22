@@ -8,6 +8,7 @@ import uvicorn
 from dotenv import load_dotenv
 
 from ..models import ContentItem
+from .automation import AutomationConfig, create_automation_runner, run_worker
 from .briefing import build_editorial_packet
 from .drafting import build_draft_prompt, create_ollama_cloud_draft_generator
 from .models import ArticleType
@@ -44,6 +45,18 @@ def main() -> int:
         action="store_true",
         help="Print the complete writer prompt without calling Ollama Cloud",
     )
+
+    automation_parser = subparsers.add_parser(
+        "automation", help="Run or inspect the bounded editorial automation pipeline"
+    )
+    automation_commands = automation_parser.add_subparsers(
+        dest="automation_command", required=True
+    )
+    automation_commands.add_parser("run", help="Run discovery once now")
+    automation_commands.add_parser(
+        "worker", help="Run discovery on the configured opt-in schedule"
+    )
+    automation_commands.add_parser("status", help="Show recent automation runs")
 
     args = parser.parse_args()
     load_dotenv()
@@ -82,6 +95,40 @@ def main() -> int:
         store.save_draft(draft)
         print(f"Saved unpublished draft {draft.draft_id} for {args.content_item_id}")
         return 0
+
+    if args.command == "automation":
+        settings = AutomationConfig.from_env()
+        store = EditorialStore(args.db)
+        if args.automation_command == "status":
+            runs = store.list_automation_runs()
+            if not runs:
+                print("No automation runs recorded.")
+            for run in runs:
+                print(
+                    f"{run.run_id} {run.status.value} {run.stage} "
+                    f"imported={run.imported_count} drafted={run.drafted_count} "
+                    f"started={run.started_at.isoformat()}"
+                )
+            return 0
+        if not settings.discovery_ready:
+            parser.error(
+                f"Discovery configuration not found: {settings.discovery_config_path}"
+            )
+        if args.automation_command == "worker" and not settings.schedule_enabled:
+            parser.error("Set AUTOMATION_ENABLED=true before starting the schedule worker.")
+        runner_factory = lambda: create_automation_runner(args.db, settings)
+        if args.automation_command == "worker":
+            asyncio.run(run_worker(runner_factory, settings.interval_minutes))
+            return 0
+        run = asyncio.run(runner_factory().run_once(trigger="manual-cli"))
+        print(
+            f"{run.status.value}: discovered={run.discovered_count} "
+            f"imported={run.imported_count} selected={run.selected_count} "
+            f"drafted={run.drafted_count}"
+        )
+        if run.error_message:
+            print(run.error_message)
+        return 1 if run.status.value == "failed" else 0
 
     uvicorn.run(
         "src.editorial.web:create_app",

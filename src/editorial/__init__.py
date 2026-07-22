@@ -1,11 +1,14 @@
 """CodeQuest editorial handoff built on Horizon discovery results."""
 
 from .briefing import build_editorial_packet
+from .automation import AutomationConfig, EditorialAutomationRunner
 from .buffer import BufferConfig, BufferPublisher, build_buffer_payload
 from .drafting import ArticleDraftGenerator, build_draft_prompt
 from .models import (
     ArticleDraft,
     ArticleType,
+    AutomationRun,
+    AutomationRunStatus,
     BufferDelivery,
     BufferDeliveryMode,
     BufferDeliveryStatus,
@@ -38,6 +41,10 @@ __all__ = [
     "ArticleDraft",
     "ArticleDraftGenerator",
     "ArticleType",
+    "AutomationConfig",
+    "AutomationRun",
+    "AutomationRunStatus",
+    "EditorialAutomationRunner",
     "BufferDelivery",
     "BufferDeliveryMode",
     "BufferDeliveryStatus",

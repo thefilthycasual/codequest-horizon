@@ -182,6 +182,27 @@ class HorizonOrchestrator:
         )
         self.last_fetch_report: Optional[FetchReport] = None
 
+    async def discover_editorial_candidates(
+        self, force_hours: int | None = None
+    ) -> List[ContentItem]:
+        """Run discovery through enrichment without producing or distributing a digest."""
+
+        since = self._determine_time_window(force_hours)
+        all_items = await self.fetch_all_sources(since)
+        if self.last_fetch_report and self.last_fetch_report.all_failed:
+            raise RuntimeError(self.last_fetch_report.failure_message())
+        if not all_items:
+            return []
+
+        merged_items = self.merge_cross_source_duplicates(all_items)
+        analyzed_items = await self._analyze_content(merged_items)
+        filtering_result = await self.filter_items(analyzed_items, apply_balance=False)
+        candidates = filtering_result.items
+        await self._expand_twitter_discussion(candidates)
+        candidates = self.apply_balanced_digest(candidates).items
+        await self._enrich_important_items(candidates)
+        return candidates
+
     async def run(self, force_hours: int = None) -> None:
         """Execute the complete workflow.
 

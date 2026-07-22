@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .models import (
     ArticleDraft,
+    AutomationRun,
+    AutomationRunStatus,
     BufferDelivery,
     BufferDeliveryMode,
     BufferDeliveryStatus,
@@ -276,6 +278,104 @@ class EditorialStore:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS automation_runs (
+                    run_id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    trigger TEXT NOT NULL,
+                    run_json TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    finished_at TEXT
+                )
+                """
+            )
+
+    def start_automation_run(self, trigger: str) -> AutomationRun:
+        """Start one run while preventing overlapping workers."""
+
+        cleaned_trigger = trigger.strip() or "manual"
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=6)).isoformat()
+        run = AutomationRun(trigger=cleaned_trigger)
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            stale_rows = connection.execute(
+                "SELECT run_json FROM automation_runs "
+                "WHERE status = ? AND started_at < ?",
+                (AutomationRunStatus.RUNNING.value, cutoff),
+            ).fetchall()
+            for row in stale_rows:
+                stale = AutomationRun.model_validate_json(row["run_json"])
+                stale.status = AutomationRunStatus.FAILED
+                stale.stage = "interrupted"
+                stale.error_message = "The worker stopped before this run finished."
+                stale.finished_at = datetime.now(timezone.utc)
+                connection.execute(
+                    "UPDATE automation_runs SET status = ?, run_json = ?, finished_at = ? "
+                    "WHERE run_id = ?",
+                    (
+                        stale.status.value,
+                        stale.model_dump_json(),
+                        stale.finished_at.isoformat(),
+                        stale.run_id,
+                    ),
+                )
+            active = connection.execute(
+                "SELECT run_id FROM automation_runs WHERE status = ? LIMIT 1",
+                (AutomationRunStatus.RUNNING.value,),
+            ).fetchone()
+            if active:
+                raise ValueError("An automation run is already in progress.")
+            connection.execute(
+                "INSERT INTO automation_runs "
+                "(run_id, status, trigger, run_json, started_at, finished_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    run.run_id,
+                    run.status.value,
+                    run.trigger,
+                    run.model_dump_json(),
+                    run.started_at.isoformat(),
+                    None,
+                ),
+            )
+        return run
+
+    def save_automation_run(self, run: AutomationRun) -> AutomationRun:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE automation_runs SET status = ?, trigger = ?, run_json = ?, "
+                "finished_at = ? WHERE run_id = ?",
+                (
+                    run.status.value,
+                    run.trigger,
+                    run.model_dump_json(),
+                    run.finished_at.isoformat() if run.finished_at else None,
+                    run.run_id,
+                ),
+            )
+        if cursor.rowcount != 1:
+            raise KeyError(run.run_id)
+        return run
+
+    def get_automation_run(self, run_id: str) -> AutomationRun | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT run_json FROM automation_runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+        return AutomationRun.model_validate_json(row["run_json"]) if row else None
+
+    def list_automation_runs(self, limit: int = 20) -> list[AutomationRun]:
+        if limit < 1:
+            return []
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT run_json FROM automation_runs "
+                "ORDER BY started_at DESC, run_id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [AutomationRun.model_validate_json(row["run_json"]) for row in rows]
 
     def save_packet(self, packet: EditorialPacket, status: str = "candidate") -> None:
         self._validate_status(status)

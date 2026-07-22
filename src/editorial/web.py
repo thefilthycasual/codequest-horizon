@@ -12,6 +12,11 @@ from urllib.parse import quote
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
+from .automation import (
+    AutomationConfig,
+    EditorialAutomationRunner,
+    create_automation_runner,
+)
 from .discord import (
     DiscordApprovalBridge,
     DiscordConfig,
@@ -153,10 +158,12 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 .subtab.active{color:var(--ink);border-bottom-color:var(--accent)}.social-list{display:grid;gap:16px}.social-card textarea{min-height:142px}.social-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}
 .social-head .badge.draft{padding:4px 9px;background:#f3f4f6}.social-meta{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:12px;margin:8px 0 14px}.inline-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.buffer-lock{border-style:dashed}
 .delivery-actions{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}.delivery-actions .text-link{display:inline-block;margin-bottom:10px}.delivery-state{margin-top:18px;padding:14px;border-radius:12px;background:#f8f9fa}.payload-copy{font-size:16px;white-space:pre-wrap;overflow-wrap:anywhere}.payload-table{display:grid;gap:8px}.payload-row{display:flex;justify-content:space-between;gap:20px;min-width:0;border-top:1px solid var(--line);padding-top:8px}.payload-row code{min-width:0;overflow-wrap:anywhere;word-break:break-all;text-align:right}.panel .text-link{overflow-wrap:anywhere}
+.run-list{display:grid;gap:10px}.run-row{display:grid;grid-template-columns:minmax(150px,.8fr) minmax(210px,1.4fr) auto;gap:18px;align-items:center;padding:15px 0;border-top:1px solid var(--line)}.run-row:first-child{border-top:0}.run-counts{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12px}.badge.completed{color:var(--success);background:#eefaf5;border-color:#cdebdc}.badge.running{color:#1d4ed8;background:#eff6ff;border-color:#bfdbfe}.badge.partial{color:var(--warning);background:#fff7ed;border-color:#fed7aa}.badge.failed{color:var(--danger);background:#fef2f2;border-color:#fecaca}
 @media(max-width:980px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:820px){.sidebar{position:static;width:auto;padding:12px}.workspace{padding-bottom:12px;margin-bottom:8px}.workspace small,.nav-label,.sidebar-foot{display:none}
 .side-nav{display:flex;overflow:auto}.nav-item{white-space:nowrap}.content{margin-left:0}.shell{padding:30px 18px 70px}.story-tabs{border-radius:10px}.story-tab{padding:8px 12px}}
-@media(max-width:480px){.stat-grid{grid-template-columns:1fr 1fr}.nav-item{font-size:13px;padding:9px}.nav-icon{display:none}}
+@media(max-width:560px){.run-row{grid-template-columns:1fr}.stat-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:480px){.nav-item{font-size:13px;padding:9px}.nav-icon{display:none}}
 """
 
 _ICONS = {
@@ -164,6 +171,7 @@ _ICONS = {
     "editorial": "<svg viewBox='0 0 24 24'><path d='M4 5h16v14H4z'/><path d='M8 9h8M8 13h8M8 17h5'/></svg>",
     "drafts": "<svg viewBox='0 0 24 24'><path d='M6 3h9l4 4v14H6z'/><path d='M14 3v5h5M9 12h6M9 16h6'/></svg>",
     "memory": "<svg viewBox='0 0 24 24'><path d='M12 3a4 4 0 0 0-4 4v1a4 4 0 0 0 0 8v1a4 4 0 0 0 4 4'/><path d='M12 3a4 4 0 0 1 4 4v1a4 4 0 0 1 0 8v1a4 4 0 0 1-4 4M12 3v18'/></svg>",
+    "operations": "<svg viewBox='0 0 24 24'><path d='M4 7h10M4 17h16M18 7h2M4 12h3M11 12h9'/><circle cx='16' cy='7' r='2'/><circle cx='9' cy='12' r='2'/></svg>",
 }
 
 _SOCIAL_LABELS = {
@@ -185,6 +193,7 @@ def _page(title: str, body: str, active: str = "overview") -> HTMLResponse:
             _nav_item("editorial", "Editorial queue", "/editorial", active),
             _nav_item("drafts", "Draft library", "/drafts", active),
             _nav_item("memory", "Editorial memory", "/preferences", active),
+            _nav_item("operations", "Operations", "/operations", active),
         )
     )
     return HTMLResponse(
@@ -283,6 +292,7 @@ def create_app(
     social_generator_factory: Callable[[], SocialCampaignGenerator] | None = None,
     buffer_config_factory: Callable[[], BufferConfig] | None = None,
     buffer_publisher_factory: Callable[[], BufferPublisher] | None = None,
+    automation_runner_factory: Callable[[], EditorialAutomationRunner] | None = None,
 ) -> FastAPI:
     app = FastAPI(title="CodeQuest Editorial Workspace")
     store = EditorialStore(db_path)
@@ -297,6 +307,10 @@ def create_app(
     buffer_settings_factory = buffer_config_factory or BufferConfig.from_env
     buffer_sender_factory = buffer_publisher_factory or (
         lambda: BufferPublisher(buffer_settings_factory())
+    )
+    automation_settings = AutomationConfig.from_env()
+    automation_factory = automation_runner_factory or (
+        lambda: create_automation_runner(db_path, automation_settings)
     )
 
     def approved_draft(content_item_id: str):
@@ -387,6 +401,82 @@ def create_app(
             "</section><div class='section-head'><h2>Recent stories</h2><a class='text-link' href='/editorial'>View editorial queue →</a></div>"
             f"<section class='grid'>{cards}</section>",
             active="overview",
+        )
+
+    @app.get("/operations", response_class=HTMLResponse)
+    def operations() -> HTMLResponse:
+        runs = store.list_automation_runs()
+        latest = runs[0] if runs else None
+        available = automation_runner_factory is not None or automation_settings.discovery_ready
+        rows = []
+        for run in runs:
+            error = (
+                f"<p class='muted'>{escape(run.error_message)}</p>"
+                if run.error_message
+                else ""
+            )
+            finished = run.finished_at.isoformat() if run.finished_at else "In progress"
+            rows.append(
+                "<article class='run-row'><div>"
+                f"<span class='badge {escape(run.status.value)}'>{escape(run.status.value)}</span>"
+                f"<p><strong>{escape(run.stage.replace('_', ' '))}</strong></p></div>"
+                "<div>"
+                f"<div class='run-counts'><span>{run.discovered_count} discovered</span>"
+                f"<span>{run.imported_count} imported</span><span>{run.selected_count} selected</span>"
+                f"<span>{run.drafted_count} drafted</span><span>{run.skipped_count} already known</span></div>"
+                f"{error}</div><small class='muted'>{escape(finished)}</small></article>"
+            )
+        run_history = "".join(rows) or (
+            "<div class='empty'><h2>No runs yet</h2>"
+            "<p class='muted'>Run discovery when you are ready to populate the editorial queue.</p></div>"
+        )
+        schedule_value = "On" if automation_settings.schedule_enabled else "Off"
+        draft_value = "On" if automation_settings.auto_generate else "Off"
+        readiness = "Ready" if available else "Setup needed"
+        latest_value = latest.status.value.replace("_", " ") if latest else "Never run"
+        disabled = "" if available else " disabled"
+        setup_note = (
+            "The discovery configuration is ready."
+            if available
+            else "Create data/config.json from the CodeQuest example before running discovery."
+        )
+        return _page(
+            "Operations",
+            "<header class='page-head'><p class='eyebrow'>OPERATIONS</p>"
+            "<h1>Automation you can <span class='accent'>see and stop.</span></h1>"
+            "<p class='muted'>Discover and prepare work automatically without bypassing editorial approval.</p></header>"
+            "<section class='stat-grid'>"
+            f"<article class='stat-card'><small>Discovery</small><strong class='stat-value'>{escape(readiness)}</strong><span class='muted'>{automation_settings.max_candidates} candidates maximum</span></article>"
+            f"<article class='stat-card'><small>Schedule</small><strong class='stat-value'>{escape(schedule_value)}</strong><span class='muted'>Every {automation_settings.interval_minutes} minutes when enabled</span></article>"
+            f"<article class='stat-card'><small>Automatic drafting</small><strong class='stat-value'>{escape(draft_value)}</strong><span class='muted'>Human approval is always required</span></article>"
+            f"<article class='stat-card'><small>Last result</small><strong class='stat-value'>{escape(latest_value.title())}</strong><span class='muted'>{len(runs)} recorded run(s)</span></article>"
+            "</section><section class='layout'><article class='panel'><p class='eyebrow'>RUN CONTROL</p>"
+            "<h2>Discover new candidates</h2>"
+            f"<p class='muted'>{escape(setup_note)}</p>"
+            "<p>This run may import and select stories. It cannot approve articles, create WordPress drafts, or send social posts.</p>"
+            f"<form method='post' action='/operations/run'><button class='button-approve' type='submit'{disabled}>Run discovery now</button></form>"
+            "</article><article class='panel'><p class='eyebrow'>CURRENT LIMITS</p>"
+            f"<h2>{automation_settings.lookback_hours}-hour lookback</h2>"
+            f"<p class='muted'>Imports at most {automation_settings.max_candidates} candidates and automatically selects at most {automation_settings.auto_select_count}.</p>"
+            "<p class='muted'>Scheduling and model-backed drafting remain opt-in environment settings.</p>"
+            "</article></section><div class='section-head'><h2>Run history</h2></div>"
+            f"<section class='panel run-list'>{run_history}</section>",
+            active="operations",
+        )
+
+    @app.post("/operations/run")
+    async def run_automation() -> RedirectResponse:
+        if automation_runner_factory is None and not automation_settings.discovery_ready:
+            raise HTTPException(
+                status_code=409,
+                detail="Discovery configuration is not ready.",
+            )
+        try:
+            run = await automation_factory().run_once(trigger="manual-workspace")
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/operations?run={quote(run.run_id, safe='')}", status_code=303
         )
 
     @app.get("/editorial", response_class=HTMLResponse)
