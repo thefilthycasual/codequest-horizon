@@ -50,6 +50,19 @@ def test_quality_report_blocks_unknown_citations() -> None:
     assert report.can_approve is False
 
 
+def test_quality_report_blocks_a_thin_article() -> None:
+    packet = _packet()
+    draft = _draft(packet)
+    draft.sections[0].paragraphs[0].text = "The public beta is available."
+    draft.prompt_version = "codequest-draft-v2"
+
+    report = evaluate_draft(packet, draft)
+    depth = next(check for check in report.checks if check.key == "draft_depth")
+
+    assert depth.status == QualityCheckStatus.BLOCK
+    assert report.can_approve is False
+
+
 def test_persisted_review_queues_latest_draft_for_discord(tmp_path) -> None:
     store = EditorialStore(tmp_path / "editorial.sqlite3")
     packet = _packet()
@@ -102,6 +115,13 @@ def test_revision_decision_requires_notes_and_feeds_next_draft(tmp_path) -> None
 
     assert store.get_item(packet.brief.content_item_id).status == "needs_revision"
     assert store.latest_revision_notes(packet.brief.content_item_id) == [decision.notes]
+
+    revised = _draft(packet, title="Revised draft")
+    revised.created_at = draft.created_at + timedelta(seconds=1)
+    store.save_draft(revised)
+
+    assert store.get_item(packet.brief.content_item_id).status == "selected"
+    assert store.latest_revision_notes(packet.brief.content_item_id) == []
 
 
 def test_only_latest_draft_can_receive_decision(tmp_path) -> None:

@@ -134,11 +134,23 @@ def evaluate_draft(packet: EditorialPacket, draft: ArticleDraft) -> DraftQuality
         )
     )
     word_count = len(re.findall(r"\b\w+\b", draft_text))
+    if draft.prompt_version == "codequest-draft-v2":
+        depth_status = (
+            QualityCheckStatus.PASS
+            if word_count >= 350
+            else QualityCheckStatus.WARNING
+            if word_count >= 180
+            else QualityCheckStatus.BLOCK
+        )
+    else:
+        depth_status = (
+            QualityCheckStatus.PASS if word_count >= 250 else QualityCheckStatus.WARNING
+        )
     checks.append(
         DraftQualityCheck(
             key="draft_depth",
             label="Draft depth",
-            status=QualityCheckStatus.PASS if word_count >= 250 else QualityCheckStatus.WARNING,
+            status=depth_status,
             detail=f"Draft contains approximately {word_count} words.",
         )
     )

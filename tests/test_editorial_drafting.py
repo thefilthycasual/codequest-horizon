@@ -81,6 +81,7 @@ def test_generator_grounds_draft_and_snapshots_preferences(tmp_path) -> None:
     assert "Avoid generic hype." in writer.calls[0]["user"]
     assert '"id": "S1"' in writer.calls[0]["user"]
     assert "Make the independent test limitation explicit." in writer.calls[0]["user"]
+    assert "Aim for 500-800 words" in writer.calls[0]["system"]
     assert writer.calls[0]["temperature"] == 0.2
 
 

@@ -501,6 +501,11 @@ class EditorialStore:
                     draft.created_at.isoformat(),
                 ),
             )
+            connection.execute(
+                "UPDATE editorial_items SET status = 'selected', updated_at = ? "
+                "WHERE content_item_id = ? AND status = 'needs_revision'",
+                (_now(), draft.content_item_id),
+            )
 
     def save_edited_draft(self, draft: ArticleDraft, parent_draft_id: str) -> None:
         """Save a human-edited version and invalidate any approval on its parent."""
@@ -1013,7 +1018,13 @@ class EditorialStore:
 
     def latest_revision_notes(self, content_item_id: str) -> list[str]:
         decision = self.get_latest_decision(content_item_id)
-        if decision and decision.outcome == DecisionOutcome.NEEDS_REVISION:
+        latest_draft = self.get_latest_draft(content_item_id)
+        if (
+            decision
+            and latest_draft
+            and decision.outcome == DecisionOutcome.NEEDS_REVISION
+            and decision.draft_id == latest_draft.draft_id
+        ):
             return [decision.notes]
         return []
 
