@@ -668,14 +668,48 @@ class HorizonOrchestrator:
             if threshold is not None
             else self.config.filtering.ai_score_threshold
         )
+        include_keywords = [
+            keyword.casefold().strip()
+            for keyword in self.config.filtering.include_keywords
+            if keyword.strip()
+        ]
+        exclude_keywords = [
+            keyword.casefold().strip()
+            for keyword in self.config.filtering.exclude_keywords
+            if keyword.strip()
+        ]
+
+        def matches_topic_policy(item: ContentItem) -> bool:
+            haystack = " ".join(
+                [
+                    item.title,
+                    item.ai_summary or "",
+                    *(str(tag) for tag in item.ai_tags),
+                    str(item.metadata.get("category") or ""),
+                ]
+            ).casefold()
+            if exclude_keywords and any(
+                keyword in haystack for keyword in exclude_keywords
+            ):
+                return False
+            return not include_keywords or any(
+                keyword in haystack for keyword in include_keywords
+            )
+
+        policy_items = [item for item in items if matches_topic_policy(item)]
         threshold_items = [
             item
-            for item in items
+            for item in policy_items
             if item.ai_score is not None and item.ai_score >= effective_threshold
         ]
         threshold_items.sort(key=lambda item: item.ai_score or 0, reverse=True)
 
         if log:
+            policy_removed = len(items) - len(policy_items)
+            if policy_removed:
+                self.console.print(
+                    f"🎯 Removed {policy_removed} items using topic inclusion/exclusion rules\n"
+                )
             self.console.print(
                 f"⭐️ {len(threshold_items)} items scored ≥ {effective_threshold}\n"
             )

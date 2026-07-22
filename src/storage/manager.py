@@ -72,6 +72,17 @@ class StorageManager:
         self.summaries_dir.mkdir(parents=True, exist_ok=True)
 
     def load_config(self) -> Config:
+        data = self.load_config_data()
+        try:
+            return Config.model_validate(_expand_env_vars(data))
+        except ValidationError as e:
+            raise ConfigError(
+                f"Configuration validation failed for {self.config_path}\n"
+                f"Details: {e}"
+            ) from e
+
+    def load_config_data(self) -> dict[str, Any]:
+        """Load the unexpanded JSON document so dashboard edits preserve placeholders."""
         if not self.config_path.exists():
             raise FileNotFoundError(
                 f"Configuration file not found: {self.config_path}\n"
@@ -86,18 +97,22 @@ class StorageManager:
                 f"Invalid JSON in configuration file: {self.config_path}\n" f"Error: {e}"
             ) from e
 
-        # Expand ${VAR} references in every string value before pydantic
-        # validation. Keeps credentials / private endpoints / tenant IDs
-        # out of the JSON file so it is safe to commit to a public repo.
-        data = _expand_env_vars(data)
+        return data
 
+    def save_config_data(self, data: dict[str, Any], backup: bool = True) -> Path:
+        """Validate expanded values while persisting the original placeholder-safe JSON."""
         try:
-            return Config.model_validate(data)
+            Config.model_validate(_expand_env_vars(data))
         except ValidationError as e:
             raise ConfigError(
                 f"Configuration validation failed for {self.config_path}\n"
                 f"Details: {e}"
             ) from e
+        if backup and self.config_path.exists():
+            shutil.copy2(self.config_path, self.config_path.with_suffix(".json.bak"))
+        content = json.dumps(data, indent=2, ensure_ascii=False)
+        _atomic_write_text(self.config_path, f"{content}\n")
+        return self.config_path
 
     def save_config(self, config: Config, backup: bool = True) -> Path:
         """Save configuration to config.json, optionally backing up the existing file.

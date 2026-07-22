@@ -63,7 +63,9 @@
       }
     },
     "default_group": "other",
-    "default_group_limit": 2
+    "default_group_limit": 2,
+    "include_keywords": [],
+    "exclude_keywords": []
   },
   "extractors": {
     "article": {

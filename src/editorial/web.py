@@ -69,6 +69,7 @@ from .social import (
     create_ollama_cloud_social_generator,
     validate_social_post,
 )
+from .source_control import ConfigError, SourceControlService
 from .store import (
     DEFAULT_BRAND_ID,
     EDITORIAL_STATUSES,
@@ -169,6 +170,7 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 .run-row{text-decoration:none;border-radius:10px;padding-left:10px;padding-right:10px}.run-row:hover,.run-row.active{background:#f7f7f8}.run-detail{margin:0 0 24px}.run-detail-head{display:flex;justify-content:space-between;gap:16px;align-items:start}.run-detail h2{margin-top:8px}.run-stories{display:grid;gap:8px;margin-top:16px}.run-story{padding:10px 12px;border:1px solid var(--line);border-radius:10px;text-decoration:none;font-weight:700}.run-story:hover{border-color:#f2c3a3}.queue-tools{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:14px}.queue-tools form{display:grid;grid-template-columns:1fr auto;gap:8px;width:min(100%,420px);justify-self:end}.queue-tools button{width:auto;padding-left:22px;padding-right:22px}.filter-tabs{display:flex;gap:7px;overflow:auto;padding-bottom:3px}.filter-tab{white-space:nowrap;text-decoration:none;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);font-weight:700}.filter-tab.active{background:var(--ink);border-color:var(--ink);color:#fff}.queue-list{display:grid}.queue-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,.25fr);gap:22px;padding:22px 4px;border-top:1px solid var(--line);align-items:center}.queue-row:first-child{border-top:0}.queue-row h2{margin:8px 0 6px}.queue-row h2 a{text-decoration:none}.queue-row h2 a:hover{color:#c75b17}.queue-row p{margin:0}.queue-summary{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.queue-side{text-align:right}.queue-side .meta{justify-content:flex-end;margin-top:0}.queue-side form{margin-top:10px}.queue-side .text-link{display:inline-block;margin-top:10px}.compact-button{padding:8px 14px;font-size:13px}
 .brain-tabs{display:flex;gap:6px;padding:6px;background:#eceef1;border-radius:13px;margin-bottom:24px;overflow:auto}.brain-tab{white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.brain-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}.profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}.profile-grid .span-2{grid-column:1/-1}.profile-grid textarea{min-height:86px}.brain-rule-list{display:grid;gap:14px}.brain-rule{border:1px solid var(--line);border-radius:14px;padding:17px;background:#fff}.brain-rule.disabled{opacity:.62}.brain-rule-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}.brain-rule form{display:grid;grid-template-columns:150px 150px 100px;gap:10px}.brain-rule form .rule-instruction{grid-column:1/-1}.brain-rule form .rule-enabled{display:flex;align-items:center;gap:8px}.brain-rule form .rule-enabled input{width:auto}.brain-rule form button{grid-column:1/-1}.memory-preview{max-height:430px;overflow:auto}.learning-signal{padding:17px 0;border-top:1px solid var(--line)}.learning-signal:first-of-type{border-top:0}.learning-signal p{margin:8px 0}.promote-form{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px}.promote-form button{width:auto}.coverage-list{display:grid;gap:9px}.coverage-row{display:flex;justify-content:space-between;gap:12px;padding-top:9px;border-top:1px solid var(--line)}
 .radar-tools{display:grid;grid-template-columns:minmax(220px,1fr) 180px 150px 170px auto;gap:10px;margin-bottom:20px}.radar-tools button{width:auto;padding-left:22px;padding-right:22px}.radar-list{display:grid;gap:12px}.radar-row{display:grid;grid-template-columns:86px minmax(0,1fr) 190px;gap:20px;align-items:center}.score-box{display:grid;place-items:center;align-content:center;min-height:82px;border-radius:15px;background:var(--ink);color:#fff}.score-box strong{font-size:27px;line-height:1}.score-box small{font-size:10px;line-height:1.25;text-align:center;text-transform:uppercase;letter-spacing:.05em;opacity:.68}.score-box.pending{background:#f0f1f3;color:var(--muted)}.radar-copy h2{margin:6px 0}.radar-copy h2 a{text-decoration:none}.radar-copy h2 a:hover{color:var(--accent)}.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.tag{padding:3px 8px;border-radius:999px;background:var(--accent-soft);color:#b85618;font-size:11px;font-weight:750}.radar-side{text-align:right}.radar-side .meta{justify-content:flex-end}.intelligence-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.signal-card{padding:17px;border:1px solid var(--line);border-radius:14px;background:#fafafa}.signal-card small,.signal-card strong{display:block}.signal-card strong{font-size:18px;margin-top:3px}.insight-copy{white-space:pre-wrap}.engagement-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.engagement-item{padding:10px 12px;border-radius:10px;background:#f7f7f8}.engagement-item strong,.engagement-item small{display:block}
+.source-tabs{display:flex;gap:6px;padding:6px;background:#eceef1;border-radius:13px;margin-bottom:24px}.source-tab{padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.source-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}.source-list{display:grid;gap:14px}.source-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:start}.source-card form{grid-column:1/-1;display:grid;grid-template-columns:1.1fr 1.8fr 1fr auto;gap:10px}.source-card form button{grid-column:1/-1}.toggle-field{display:flex;align-items:center;gap:8px;padding:10px}.toggle-field input{width:auto}.source-state{display:inline-block;width:10px;height:10px;border-radius:50%;background:#b8bdc5;margin:0 8px 1px 0}.source-state.on{background:var(--success);box-shadow:0 0 0 4px #e8f8f1}.topic-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.topic-form .span-2,.topic-form button{grid-column:1/-1}.topic-form textarea{min-height:92px}.group-card form{display:grid;grid-template-columns:1fr 1fr 110px;gap:10px}.group-card form .group-categories,.group-card form button{grid-column:1/-1}.config-note{padding:13px 16px;border:1px solid #cdebdc;border-radius:12px;background:#eefaf5;color:var(--success);margin-bottom:18px}
 @media(max-width:980px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:820px){.sidebar{position:static;width:auto;padding:12px}.workspace{padding-bottom:12px;margin-bottom:8px}.workspace small,.nav-label,.sidebar-foot{display:none}
 .side-nav{display:flex;overflow:auto}.nav-item{white-space:nowrap}.content{margin-left:0}.shell{padding:30px 18px 70px}.story-tabs{border-radius:10px}.story-tab{padding:8px 12px}}
@@ -176,6 +178,7 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 @media(max-width:700px){.profile-grid,.brain-rule form{grid-template-columns:1fr}.profile-grid .span-2,.brain-rule form .rule-instruction,.brain-rule form button{grid-column:1}.promote-form{grid-template-columns:1fr}.promote-form button{width:100%}}
 @media(max-width:900px){.radar-tools{grid-template-columns:1fr 1fr}.radar-tools button{width:100%}.radar-row{grid-template-columns:70px minmax(0,1fr)}.radar-side{grid-column:2;text-align:left}.radar-side .meta{justify-content:flex-start}}
 @media(max-width:620px){.radar-tools,.intelligence-grid{grid-template-columns:1fr}.radar-row{grid-template-columns:1fr}.score-box{min-height:64px}.radar-side{grid-column:1}}
+@media(max-width:760px){.source-card form,.topic-form,.group-card form{grid-template-columns:1fr}.topic-form .span-2,.topic-form button,.group-card form .group-categories,.group-card form button,.source-card form button{grid-column:1}}
 @media(max-width:560px){.run-row{grid-template-columns:1fr}.stat-grid{grid-template-columns:1fr 1fr}.queue-tools form{grid-template-columns:1fr}.queue-tools button{width:100%}}
 @media(max-width:480px){.nav-item{font-size:13px;padding:9px}.nav-icon{display:none}}
 """
@@ -183,6 +186,7 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 _ICONS = {
     "overview": "<svg viewBox='0 0 24 24'><rect x='3' y='3' width='7' height='7' rx='1'/><rect x='14' y='3' width='7' height='7' rx='1'/><rect x='3' y='14' width='7' height='7' rx='1'/><rect x='14' y='14' width='7' height='7' rx='1'/></svg>",
     "discovery": "<svg viewBox='0 0 24 24'><circle cx='11' cy='11' r='7'/><path d='m16 16 5 5M11 7v8M7 11h8'/></svg>",
+    "sources": "<svg viewBox='0 0 24 24'><path d='M4 6h16M4 12h16M4 18h16'/><circle cx='8' cy='6' r='2'/><circle cx='16' cy='12' r='2'/><circle cx='10' cy='18' r='2'/></svg>",
     "editorial": "<svg viewBox='0 0 24 24'><path d='M4 5h16v14H4z'/><path d='M8 9h8M8 13h8M8 17h5'/></svg>",
     "drafts": "<svg viewBox='0 0 24 24'><path d='M6 3h9l4 4v14H6z'/><path d='M14 3v5h5M9 12h6M9 16h6'/></svg>",
     "memory": "<svg viewBox='0 0 24 24'><path d='M12 3a4 4 0 0 0-4 4v1a4 4 0 0 0 0 8v1a4 4 0 0 0 4 4'/><path d='M12 3a4 4 0 0 1 4 4v1a4 4 0 0 1 0 8v1a4 4 0 0 1-4 4M12 3v18'/></svg>",
@@ -206,6 +210,7 @@ def _page(title: str, body: str, active: str = "overview") -> HTMLResponse:
         (
             _nav_item("overview", "Overview", "/", active),
             _nav_item("discovery", "Discovery Radar", "/discovery", active),
+            _nav_item("sources", "Source Control", "/sources", active),
             _nav_item("editorial", "Editorial queue", "/editorial", active),
             _nav_item("drafts", "Draft library", "/drafts", active),
             _nav_item("memory", "Brand Brain", "/preferences", active),
@@ -331,6 +336,7 @@ def create_app(
     buffer_config_factory: Callable[[], BufferConfig] | None = None,
     buffer_publisher_factory: Callable[[], BufferPublisher] | None = None,
     automation_runner_factory: Callable[[], EditorialAutomationRunner] | None = None,
+    source_config_path: str | Path | None = None,
 ) -> FastAPI:
     app = FastAPI(title="CodeQuest Editorial Workspace")
     store = EditorialStore(db_path)
@@ -347,6 +353,9 @@ def create_app(
         lambda: BufferPublisher(buffer_settings_factory())
     )
     automation_settings = AutomationConfig.from_env()
+    source_control = SourceControlService(
+        source_config_path or automation_settings.discovery_config_path
+    )
     automation_factory = automation_runner_factory or (
         lambda: create_automation_runner(db_path, automation_settings)
     )
@@ -565,6 +574,245 @@ def create_app(
             active="discovery",
         )
 
+    @app.get("/sources", response_class=HTMLResponse)
+    def source_control_page(tab: str = "sources", notice: str = "") -> HTMLResponse:
+        if tab not in {"sources", "topics"}:
+            raise HTTPException(status_code=404, detail="Source control tab not found")
+        if not source_control.ready:
+            return _page(
+                "Source Control",
+                "<section class='panel empty'><p class='eyebrow'>SOURCE CONTROL</p>"
+                "<h1>Discovery configuration <span class='accent'>needed.</span></h1>"
+                "<p class='muted'>Create the Horizon configuration from data/config.codequest.example.json, then manage it here.</p>"
+                "<a class='text-link' href='/operations'>Open Operations →</a></section>",
+                active="sources",
+            )
+        try:
+            config = source_control.load()
+            raw_config = source_control.load_raw()
+        except (ConfigError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        records = store.list_items()
+        observed: dict[str, int] = {}
+        for record in records:
+            insight = record.packet.discovery
+            if insight:
+                observed[insight.source_type.value] = observed.get(insight.source_type.value, 0) + 1
+        enabled_rss = sum(source.enabled for source in config.sources.rss)
+        active_types = {
+            "rss": bool(enabled_rss),
+            "hackernews": config.sources.hackernews.enabled,
+            "reddit": config.sources.reddit.enabled,
+            "telegram": config.sources.telegram.enabled,
+            "ossinsight": config.sources.ossinsight.enabled,
+            "twitter": bool(config.sources.twitter and config.sources.twitter.enabled),
+            "openbb": bool(config.sources.openbb and config.sources.openbb.enabled),
+            "gdelt": bool(config.sources.gdelt and config.sources.gdelt.enabled),
+            "google_news": bool(config.sources.google_news and config.sources.google_news.enabled),
+            "github": any(source.enabled for source in config.sources.github),
+        }
+        active_type_count = sum(active_types.values())
+        categories = sorted(
+            {
+                category
+                for category in [
+                    config.sources.hackernews.category,
+                    *(source.category for source in config.sources.rss),
+                ]
+                if category
+            }
+        )
+        notice_html = (
+            f"<div class='config-note'>{escape(notice)}</div>" if notice else ""
+        )
+        tabs = (
+            "<nav class='source-tabs' aria-label='Source controls'>"
+            f"<a class='source-tab{' active' if tab == 'sources' else ''}' href='/sources?tab=sources'>Sources</a>"
+            f"<a class='source-tab{' active' if tab == 'topics' else ''}' href='/sources?tab=topics'>Topics & limits</a></nav>"
+        )
+        rss_cards = []
+        raw_rss = raw_config.get("sources", {}).get("rss", [])
+        for index, source in enumerate(config.sources.rss):
+            checked = " checked" if source.enabled else ""
+            raw_url = (
+                str(raw_rss[index].get("url", source.url))
+                if index < len(raw_rss)
+                else str(source.url)
+            )
+            rss_cards.append(
+                "<article class='panel source-card'><div>"
+                f"<h2><span class='source-state{' on' if source.enabled else ''}'></span>{escape(source.name)}</h2>"
+                f"<p class='muted'>{escape(raw_url)}</p>"
+                f"<span class='badge'>RSS · {escape(source.category or 'uncategorised')}</span></div>"
+                f"<span class='badge {'pass' if source.enabled else ''}'>{'Enabled' if source.enabled else 'Paused'}</span>"
+                f"<form method='post' action='/sources/rss/{index}'>"
+                f"<input name='name' value='{escape(source.name, quote=True)}' required aria-label='Feed name'>"
+                f"<input name='url' value='{escape(raw_url, quote=True)}' required aria-label='Feed URL'>"
+                f"<input name='category' value='{escape(source.category or '', quote=True)}' placeholder='Category' aria-label='Category'>"
+                f"<label class='toggle-field'><input type='checkbox' name='enabled' value='true'{checked}> Enabled</label>"
+                "<button type='submit'>Save feed</button></form></article>"
+            )
+        rss_html = "".join(rss_cards) or (
+            "<section class='panel'><h2>No RSS feeds configured</h2><p class='muted'>Add the first trusted publication below.</p></section>"
+        )
+        hn = config.sources.hackernews
+        hn_checked = " checked" if hn.enabled else ""
+        sources_body = (
+            "<div class='layout'><section class='stack'><div class='section-head'><h2>RSS publications</h2>"
+            f"<span class='muted'>{enabled_rss}/{len(config.sources.rss)} enabled · {observed.get('rss', 0)} observed stories</span></div><div class='source-list'>{rss_html}</div></section>"
+            "<aside class='stack'><section class='panel'><p class='eyebrow'>ADD SOURCE</p><h2>New RSS feed</h2>"
+            "<form method='post' action='/sources/rss'><input name='name' required placeholder='Publication name'>"
+            "<input name='url' type='url' required placeholder='https://example.com/feed.xml'>"
+            "<input name='category' placeholder='Category, e.g. developer-tools'>"
+            "<label class='toggle-field'><input type='checkbox' name='enabled' value='true' checked> Enabled</label>"
+            "<button type='submit'>Add RSS feed</button></form></section>"
+            "<section class='panel'><p class='eyebrow'>COMMUNITY SIGNAL</p><h2>Hacker News</h2>"
+            f"<p class='muted'>{observed.get('hackernews', 0)} enriched stories currently in the workspace.</p>"
+            "<form method='post' action='/sources/hackernews'>"
+            f"<input type='number' min='1' max='500' name='fetch_top_stories' value='{hn.fetch_top_stories}' aria-label='Stories to fetch'>"
+            f"<input type='number' min='0' name='min_score' value='{hn.min_score}' aria-label='Minimum HN score'>"
+            f"<input name='category' value='{escape(hn.category or '', quote=True)}' placeholder='Category'>"
+            f"<label class='toggle-field'><input type='checkbox' name='enabled' value='true'{hn_checked}> Enabled</label>"
+            "<button type='submit'>Save Hacker News</button></form></section></aside></div>"
+        )
+        filtering = config.filtering
+        include_value = ", ".join(filtering.include_keywords)
+        exclude_value = ", ".join(filtering.exclude_keywords)
+        group_cards = "".join(
+            "<article class='panel group-card'>"
+            f"<span class='badge'>{escape(key)}</span><h2>{escape(group.name or key)}</h2>"
+            f"<p class='muted'>Up to {group.limit} stories from {len(group.categories)} categor{'y' if len(group.categories) == 1 else 'ies'}.</p>"
+            "<form method='post' action='/sources/groups'>"
+            f"<input type='hidden' name='key' value='{escape(key, quote=True)}'>"
+            f"<input name='name' value='{escape(group.name or '', quote=True)}' placeholder='Display name'>"
+            f"<input type='number' min='1' name='limit' value='{group.limit}' aria-label='Group limit'>"
+            f"<textarea class='group-categories' name='categories' required>{escape(', '.join(group.categories))}</textarea>"
+            "<button type='submit'>Save category group</button></form></article>"
+            for key, group in filtering.category_groups.items()
+        ) or "<section class='panel'><h2>No category groups</h2><p class='muted'>Without groups, stories are ranked together using the overall item limit.</p></section>"
+        topics_body = (
+            "<div class='layout'><section class='stack'><section class='panel'><p class='eyebrow'>DISCOVERY POLICY</p>"
+            "<h2>Relevance and volume</h2><form class='topic-form' method='post' action='/sources/filtering'>"
+            f"<label><span class='field-label'>Minimum AI score</span><input type='number' min='0' max='10' step='0.1' name='score_threshold' value='{filtering.ai_score_threshold}'></label>"
+            f"<label><span class='field-label'>Lookback hours</span><input type='number' min='1' max='720' name='time_window_hours' value='{filtering.time_window_hours}'></label>"
+            f"<label><span class='field-label'>Maximum stories per digest</span><input type='number' min='1' name='max_items' value='{filtering.max_items or ''}' placeholder='Unlimited'></label>"
+            f"<label><span class='field-label'>Uncategorised story limit</span><input type='number' min='1' name='default_group_limit' value='{filtering.default_group_limit or ''}' placeholder='Unlimited'></label>"
+            f"<label class='span-2'><span class='field-label'>Include at least one topic (optional)</span><textarea name='include_keywords' placeholder='AI agents, developer tools, Python'>{escape(include_value)}</textarea></label>"
+            f"<label class='span-2'><span class='field-label'>Always exclude these topics</span><textarea name='exclude_keywords' placeholder='crypto price, celebrity'>{escape(exclude_value)}</textarea></label>"
+            "<button type='submit'>Save discovery policy</button></form></section>"
+            f"<div class='section-head'><h2>Category priorities</h2><span class='muted'>{len(filtering.category_groups)} group(s)</span></div>{group_cards}</section>"
+            "<aside class='stack'><section class='panel'><p class='eyebrow'>ADD GROUP</p><h2>New category quota</h2>"
+            "<form method='post' action='/sources/groups'><input name='key' required placeholder='developer-core'>"
+            "<input name='name' placeholder='Developer core topics'><input type='number' min='1' name='limit' value='5'>"
+            "<textarea name='categories' required placeholder='ai, developer-tools, developer-news'></textarea>"
+            "<button type='submit'>Add category group</button></form></section>"
+            "<section class='panel'><h2>How topic controls work</h2><p class='muted'>Exclusions win first. If inclusion topics are configured, a story must match at least one in its title, summary, AI tags, or source category. Score and category quotas are applied afterwards.</p></section></aside></div>"
+        )
+        return _page(
+            "Source Control",
+            "<header class='page-head'><p class='eyebrow'>SOURCE CONTROL</p>"
+            "<h1>Shape what Horizon <span class='accent'>notices.</span></h1>"
+            "<p class='muted'>Manage the real discovery inputs and limits used by the automation pipeline.</p></header>"
+            "<section class='stat-grid'>"
+            f"<article class='stat-card'><small>Active source types</small><strong class='stat-value'>{active_type_count}</strong><span class='muted'>of {len(active_types)} supported types</span></article>"
+            f"<article class='stat-card'><small>RSS feeds</small><strong class='stat-value'>{enabled_rss}</strong><span class='muted'>{len(config.sources.rss)} configured</span></article>"
+            f"<article class='stat-card'><small>Topic categories</small><strong class='stat-value'>{len(categories)}</strong><span class='muted'>assigned to primary sources</span></article>"
+            f"<article class='stat-card'><small>Radar coverage</small><strong class='stat-value'>{sum(observed.values())}</strong><span class='muted'>stories with preserved intelligence</span></article></section>"
+            f"{notice_html}{tabs}{sources_body if tab == 'sources' else topics_body}",
+            active="sources",
+        )
+
+    def _optional_positive_int(value: str, label: str) -> int | None:
+        if not value.strip():
+            return None
+        try:
+            parsed = int(value)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"{label} must be a whole number.") from exc
+        if parsed < 1:
+            raise HTTPException(status_code=400, detail=f"{label} must be at least 1.")
+        return parsed
+
+    @app.post("/sources/filtering")
+    def update_source_filtering(
+        score_threshold: float = Form(),
+        time_window_hours: int = Form(),
+        max_items: str = Form(""),
+        default_group_limit: str = Form(""),
+        include_keywords: str = Form(""),
+        exclude_keywords: str = Form(""),
+    ) -> RedirectResponse:
+        try:
+            source_control.update_filtering(
+                score_threshold=score_threshold,
+                time_window_hours=time_window_hours,
+                max_items=_optional_positive_int(max_items, "Maximum stories"),
+                include_keywords=include_keywords,
+                exclude_keywords=exclude_keywords,
+                default_group_limit=_optional_positive_int(default_group_limit, "Default group limit"),
+            )
+        except (ConfigError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse("/sources?tab=topics&notice=Discovery%20policy%20saved", status_code=303)
+
+    @app.post("/sources/hackernews")
+    def update_hackernews_source(
+        enabled: bool = Form(False),
+        fetch_top_stories: int = Form(),
+        min_score: int = Form(),
+        category: str = Form(""),
+    ) -> RedirectResponse:
+        try:
+            source_control.update_hackernews(
+                enabled=enabled,
+                fetch_top_stories=fetch_top_stories,
+                min_score=min_score,
+                category=category,
+            )
+        except (ConfigError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse("/sources?notice=Hacker%20News%20settings%20saved", status_code=303)
+
+    @app.post("/sources/rss")
+    def add_rss_source(
+        name: str = Form(), url: str = Form(), category: str = Form(""), enabled: bool = Form(False)
+    ) -> RedirectResponse:
+        try:
+            source_control.add_rss(name=name, url=url, category=category, enabled=enabled)
+        except (ConfigError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse("/sources?notice=RSS%20feed%20added", status_code=303)
+
+    @app.post("/sources/rss/{index}")
+    def update_rss_source(
+        index: int,
+        name: str = Form(),
+        url: str = Form(),
+        category: str = Form(""),
+        enabled: bool = Form(False),
+    ) -> RedirectResponse:
+        try:
+            source_control.update_rss(
+                index, name=name, url=url, category=category, enabled=enabled
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (ConfigError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse("/sources?notice=RSS%20feed%20saved", status_code=303)
+
+    @app.post("/sources/groups")
+    def update_source_group(
+        key: str = Form(), name: str = Form(""), categories: str = Form(), limit: int = Form()
+    ) -> RedirectResponse:
+        try:
+            source_control.update_category_group(
+                key=key, name=name, categories=categories, limit=limit
+            )
+        except (ConfigError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse("/sources?tab=topics&notice=Category%20group%20saved", status_code=303)
+
     @app.get("/operations", response_class=HTMLResponse)
     def operations(run: str = "") -> HTMLResponse:
         runs = store.list_automation_runs()
@@ -662,6 +910,7 @@ def create_app(
             "<h2>Discover new candidates</h2>"
             f"<p class='muted'>{escape(setup_note)}</p>"
             "<p>This run may import and select stories. It cannot approve articles, create WordPress drafts, or send social posts.</p>"
+            "<a class='text-link' href='/sources'>Review discovery sources and topic limits →</a>"
             f"<form method='post' action='/operations/run'><button class='button-approve' type='submit'{disabled}>Run discovery now</button></form>"
             "</article><article class='panel'><p class='eyebrow'>CURRENT LIMITS</p>"
             f"<h2>{automation_settings.lookback_hours}-hour lookback</h2>"
