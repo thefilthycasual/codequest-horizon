@@ -59,6 +59,7 @@ from .models import (
     SocialPostDraft,
     SocialPostStatus,
     WordPressDeliveryStatus,
+    WordPressPublishingSettings,
 )
 from .preferences import build_preference_profile
 from .quality import evaluate_draft, pending_required_facts
@@ -171,6 +172,7 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 .brain-tabs{display:flex;gap:6px;padding:6px;background:#eceef1;border-radius:13px;margin-bottom:24px;overflow:auto}.brain-tab{white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.brain-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}.profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}.profile-grid .span-2{grid-column:1/-1}.profile-grid textarea{min-height:86px}.brain-rule-list{display:grid;gap:14px}.brain-rule{border:1px solid var(--line);border-radius:14px;padding:17px;background:#fff}.brain-rule.disabled{opacity:.62}.brain-rule-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}.brain-rule form{display:grid;grid-template-columns:150px 150px 100px;gap:10px}.brain-rule form .rule-instruction{grid-column:1/-1}.brain-rule form .rule-enabled{display:flex;align-items:center;gap:8px}.brain-rule form .rule-enabled input{width:auto}.brain-rule form button{grid-column:1/-1}.memory-preview{max-height:430px;overflow:auto}.learning-signal{padding:17px 0;border-top:1px solid var(--line)}.learning-signal:first-of-type{border-top:0}.learning-signal p{margin:8px 0}.promote-form{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px}.promote-form button{width:auto}.coverage-list{display:grid;gap:9px}.coverage-row{display:flex;justify-content:space-between;gap:12px;padding-top:9px;border-top:1px solid var(--line)}
 .radar-tools{display:grid;grid-template-columns:minmax(220px,1fr) 180px 150px 170px auto;gap:10px;margin-bottom:20px}.radar-tools button{width:auto;padding-left:22px;padding-right:22px}.radar-list{display:grid;gap:12px}.radar-row{display:grid;grid-template-columns:86px minmax(0,1fr) 190px;gap:20px;align-items:center}.score-box{display:grid;place-items:center;align-content:center;min-height:82px;border-radius:15px;background:var(--ink);color:#fff}.score-box strong{font-size:27px;line-height:1}.score-box small{font-size:10px;line-height:1.25;text-align:center;text-transform:uppercase;letter-spacing:.05em;opacity:.68}.score-box.pending{background:#f0f1f3;color:var(--muted)}.radar-copy h2{margin:6px 0}.radar-copy h2 a{text-decoration:none}.radar-copy h2 a:hover{color:var(--accent)}.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.tag{padding:3px 8px;border-radius:999px;background:var(--accent-soft);color:#b85618;font-size:11px;font-weight:750}.radar-side{text-align:right}.radar-side .meta{justify-content:flex-end}.intelligence-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.signal-card{padding:17px;border:1px solid var(--line);border-radius:14px;background:#fafafa}.signal-card small,.signal-card strong{display:block}.signal-card strong{font-size:18px;margin-top:3px}.insight-copy{white-space:pre-wrap}.engagement-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.engagement-item{padding:10px 12px;border-radius:10px;background:#f7f7f8}.engagement-item strong,.engagement-item small{display:block}
 .source-tabs{display:flex;gap:6px;padding:6px;background:#eceef1;border-radius:13px;margin-bottom:24px}.source-tab{padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.source-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}.source-list{display:grid;gap:14px}.source-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:start}.source-card form{grid-column:1/-1;display:grid;grid-template-columns:1.1fr 1.8fr 1fr auto;gap:10px}.source-card form button{grid-column:1/-1}.toggle-field{display:flex;align-items:center;gap:8px;padding:10px}.toggle-field input{width:auto}.source-state{display:inline-block;width:10px;height:10px;border-radius:50%;background:#b8bdc5;margin:0 8px 1px 0}.source-state.on{background:var(--success);box-shadow:0 0 0 4px #e8f8f1}.topic-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.topic-form .span-2,.topic-form button{grid-column:1/-1}.topic-form textarea{min-height:92px}.group-card form{display:grid;grid-template-columns:1fr 1fr 110px;gap:10px}.group-card form .group-categories,.group-card form button{grid-column:1/-1}.config-note{padding:13px 16px;border:1px solid #cdebdc;border-radius:12px;background:#eefaf5;color:var(--success);margin-bottom:18px}
+.category-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.category-option{display:grid;grid-template-columns:auto 1fr;gap:9px;align-items:start;padding:11px;border:1px solid var(--line);border-radius:11px;background:#fafafa}.category-option input{width:auto;margin-top:4px}.category-option small,.category-option strong{display:block}.publishing-list{display:grid}.publishing-row{display:grid;grid-template-columns:minmax(0,1fr) 220px auto;gap:18px;align-items:center;padding:17px 0;border-top:1px solid var(--line)}.publishing-row:first-child{border-top:0}.publishing-row h3{margin:4px 0}.taxonomy-list{display:flex;gap:7px;flex-wrap:wrap}.taxonomy-item{padding:7px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:12px}.connection-card{border-color:#cdebdc;background:#f8fffb}
 @media(max-width:980px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:820px){.sidebar{position:static;width:auto;padding:12px}.workspace{padding-bottom:12px;margin-bottom:8px}.workspace small,.nav-label,.sidebar-foot{display:none}
 .side-nav{display:flex;overflow:auto}.nav-item{white-space:nowrap}.content{margin-left:0}.shell{padding:30px 18px 70px}.story-tabs{border-radius:10px}.story-tab{padding:8px 12px}}
@@ -179,6 +181,7 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 @media(max-width:900px){.radar-tools{grid-template-columns:1fr 1fr}.radar-tools button{width:100%}.radar-row{grid-template-columns:70px minmax(0,1fr)}.radar-side{grid-column:2;text-align:left}.radar-side .meta{justify-content:flex-start}}
 @media(max-width:620px){.radar-tools,.intelligence-grid{grid-template-columns:1fr}.radar-row{grid-template-columns:1fr}.score-box{min-height:64px}.radar-side{grid-column:1}}
 @media(max-width:760px){.source-card form,.topic-form,.group-card form{grid-template-columns:1fr}.topic-form .span-2,.topic-form button,.group-card form .group-categories,.group-card form button,.source-card form button{grid-column:1}}
+@media(max-width:760px){.publishing-row{grid-template-columns:1fr}.category-grid{grid-template-columns:1fr}}
 @media(max-width:560px){.run-row{grid-template-columns:1fr}.stat-grid{grid-template-columns:1fr 1fr}.queue-tools form{grid-template-columns:1fr}.queue-tools button{width:100%}}
 @media(max-width:480px){.nav-item{font-size:13px;padding:9px}.nav-icon{display:none}}
 """
@@ -189,6 +192,7 @@ _ICONS = {
     "sources": "<svg viewBox='0 0 24 24'><path d='M4 6h16M4 12h16M4 18h16'/><circle cx='8' cy='6' r='2'/><circle cx='16' cy='12' r='2'/><circle cx='10' cy='18' r='2'/></svg>",
     "editorial": "<svg viewBox='0 0 24 24'><path d='M4 5h16v14H4z'/><path d='M8 9h8M8 13h8M8 17h5'/></svg>",
     "drafts": "<svg viewBox='0 0 24 24'><path d='M6 3h9l4 4v14H6z'/><path d='M14 3v5h5M9 12h6M9 16h6'/></svg>",
+    "publishing": "<svg viewBox='0 0 24 24'><path d='M5 4h14v16H5z'/><path d='M8 8h8M8 12h8M8 16h5'/><path d='m14 4 5 5'/></svg>",
     "memory": "<svg viewBox='0 0 24 24'><path d='M12 3a4 4 0 0 0-4 4v1a4 4 0 0 0 0 8v1a4 4 0 0 0 4 4'/><path d='M12 3a4 4 0 0 1 4 4v1a4 4 0 0 1 0 8v1a4 4 0 0 1-4 4M12 3v18'/></svg>",
     "operations": "<svg viewBox='0 0 24 24'><path d='M4 7h10M4 17h16M18 7h2M4 12h3M11 12h9'/><circle cx='16' cy='7' r='2'/><circle cx='9' cy='12' r='2'/></svg>",
 }
@@ -213,6 +217,7 @@ def _page(title: str, body: str, active: str = "overview") -> HTMLResponse:
             _nav_item("sources", "Source Control", "/sources", active),
             _nav_item("editorial", "Editorial queue", "/editorial", active),
             _nav_item("drafts", "Draft library", "/drafts", active),
+            _nav_item("publishing", "Publishing Hub", "/publishing", active),
             _nav_item("memory", "Brand Brain", "/preferences", active),
             _nav_item("operations", "Operations", "/operations", active),
         )
@@ -681,32 +686,45 @@ def create_app(
         group_cards = "".join(
             "<article class='panel group-card'>"
             f"<span class='badge'>{escape(key)}</span><h2>{escape(group.name or key)}</h2>"
-            f"<p class='muted'>Up to {group.limit} stories from {len(group.categories)} categor{'y' if len(group.categories) == 1 else 'ies'}.</p>"
+            f"<p class='muted'>Together, these {len(group.categories)} categor{'y' if len(group.categories) == 1 else 'ies'} can contribute at most {group.limit} stories per run.</p>"
             "<form method='post' action='/sources/groups'>"
             f"<input type='hidden' name='key' value='{escape(key, quote=True)}'>"
-            f"<input name='name' value='{escape(group.name or '', quote=True)}' placeholder='Display name'>"
-            f"<input type='number' min='1' name='limit' value='{group.limit}' aria-label='Group limit'>"
+            f"<label><span class='field-label'>Name editors see</span><input name='name' value='{escape(group.name or '', quote=True)}' placeholder='Display name'></label>"
+            f"<label><span class='field-label'>Combined story maximum</span><input type='number' min='1' name='limit' value='{group.limit}' aria-label='Group limit'></label>"
+            "<span></span>"
+            "<label class='group-categories'><span class='field-label'>Source categories sharing this maximum</span>"
             f"<textarea class='group-categories' name='categories' required>{escape(', '.join(group.categories))}</textarea>"
-            "<button type='submit'>Save category group</button></form></article>"
+            "</label><button type='submit'>Save topic-mix limit</button></form></article>"
             for key, group in filtering.category_groups.items()
-        ) or "<section class='panel'><h2>No category groups</h2><p class='muted'>Without groups, stories are ranked together using the overall item limit.</p></section>"
+        ) or "<section class='panel'><h2>No topic-mix limits yet</h2><p class='muted'>Every qualifying story currently competes for the same overall story limit. Add a group if one subject starts crowding out the others.</p></section>"
         topics_body = (
-            "<div class='layout'><section class='stack'><section class='panel'><p class='eyebrow'>DISCOVERY POLICY</p>"
-            "<h2>Relevance and volume</h2><form class='topic-form' method='post' action='/sources/filtering'>"
-            f"<label><span class='field-label'>Minimum AI score</span><input type='number' min='0' max='10' step='0.1' name='score_threshold' value='{filtering.ai_score_threshold}'></label>"
-            f"<label><span class='field-label'>Lookback hours</span><input type='number' min='1' max='720' name='time_window_hours' value='{filtering.time_window_hours}'></label>"
-            f"<label><span class='field-label'>Maximum stories per digest</span><input type='number' min='1' name='max_items' value='{filtering.max_items or ''}' placeholder='Unlimited'></label>"
-            f"<label><span class='field-label'>Uncategorised story limit</span><input type='number' min='1' name='default_group_limit' value='{filtering.default_group_limit or ''}' placeholder='Unlimited'></label>"
-            f"<label class='span-2'><span class='field-label'>Include at least one topic (optional)</span><textarea name='include_keywords' placeholder='AI agents, developer tools, Python'>{escape(include_value)}</textarea></label>"
-            f"<label class='span-2'><span class='field-label'>Always exclude these topics</span><textarea name='exclude_keywords' placeholder='crypto price, celebrity'>{escape(exclude_value)}</textarea></label>"
+            "<div class='layout'><section class='stack'><section class='panel'><p class='eyebrow'>WHAT SHOULD ENTER YOUR QUEUE?</p>"
+            "<h2>Choose which stories Horizon keeps</h2><p class='muted'>After Horizon collects stories, these rules remove unwanted topics, require any must-have topics, reject weak stories, and finally limit how many reach your queue.</p>"
+            "<form class='topic-form' method='post' action='/sources/filtering'>"
+            f"<label><span class='field-label'>How strong must a story be?</span><small class='muted'>Horizon scores every story from 0–10. At {filtering.ai_score_threshold:g}, lower-scoring stories are left out.</small><input type='number' min='0' max='10' step='0.1' name='score_threshold' value='{filtering.ai_score_threshold}'></label>"
+            f"<label><span class='field-label'>How far back should Horizon look?</span><small class='muted'>A {filtering.time_window_hours}-hour window finds stories published during roughly the last {max(1, round(filtering.time_window_hours / 24))} day(s).</small><input type='number' min='1' max='720' name='time_window_hours' value='{filtering.time_window_hours}'></label>"
+            f"<label><span class='field-label'>How many stories may one run keep?</span><small class='muted'>This is the final overall cap after all other rules. Leave empty for no overall cap.</small><input type='number' min='1' name='max_items' value='{filtering.max_items or ''}' placeholder='No overall cap'></label>"
+            f"<label><span class='field-label'>How many ungrouped stories may appear?</span><small class='muted'>Applies to stories whose source category is not in a topic-mix group below.</small><input type='number' min='1' name='default_group_limit' value='{filtering.default_group_limit or ''}' placeholder='No separate cap'></label>"
+            f"<label class='span-2'><span class='field-label'>Only keep stories about these topics (optional)</span><small class='muted'>When filled in, a story must match at least one phrase. Separate phrases with commas or new lines. Leave empty to allow every topic.</small><textarea name='include_keywords' placeholder='AI agents, developer tools, Python'>{escape(include_value)}</textarea></label>"
+            f"<label class='span-2'><span class='field-label'>Never keep stories about these topics</span><small class='muted'>Exclusions always win—even when the story also matches an allowed topic.</small><textarea name='exclude_keywords' placeholder='crypto price, celebrity gossip'>{escape(exclude_value)}</textarea></label>"
             "<button type='submit'>Save discovery policy</button></form></section>"
-            f"<div class='section-head'><h2>Category priorities</h2><span class='muted'>{len(filtering.category_groups)} group(s)</span></div>{group_cards}</section>"
-            "<aside class='stack'><section class='panel'><p class='eyebrow'>ADD GROUP</p><h2>New category quota</h2>"
+            f"<div class='section-head'><h2>Topic-mix limits</h2><span class='muted'>{len(filtering.category_groups)} group(s)</span></div>"
+            "<p class='muted'>Prevent one broad subject from filling the entire queue. Each group combines several source categories and sets their shared maximum.</p>"
+            f"{group_cards}</section>"
+            "<aside class='stack'><section class='panel'><p class='eyebrow'>CURRENT EFFECT</p><h2>How the rules run</h2>"
+            f"<p><strong>1. Exclude:</strong> {len(filtering.exclude_keywords)} blocked phrase(s).</p>"
+            f"<p><strong>2. Include:</strong> {'Match at least one of ' + str(len(filtering.include_keywords)) + ' phrase(s).' if filtering.include_keywords else 'No required topics; all subjects may continue.'}</p>"
+            f"<p><strong>3. Quality:</strong> Keep scores of {filtering.ai_score_threshold:g} or higher.</p>"
+            f"<p><strong>4. Mix and volume:</strong> Apply {len(filtering.category_groups)} topic-group limit(s), then keep at most {filtering.max_items if filtering.max_items else 'an unlimited number of'} stories.</p></section>"
+            "<section class='panel'><p class='eyebrow'>ADD A TOPIC-MIX LIMIT</p><h2>Stop one subject dominating the queue</h2>"
+            "<p class='muted'>Example: combine <strong>AI</strong>, <strong>machine-learning</strong>, and <strong>LLMs</strong> with a limit of 5. Horizon may then keep at most five stories across those categories combined—not five from each.</p>"
             "<form method='post' action='/sources/groups'><input name='key' required placeholder='developer-core'>"
-            "<input name='name' placeholder='Developer core topics'><input type='number' min='1' name='limit' value='5'>"
+            "<small class='muted'>Internal label, for example developer-core</small>"
+            "<input name='name' placeholder='Developer core topics'><small class='muted'>Name shown to editors</small>"
+            "<input type='number' min='1' name='limit' value='5'><small class='muted'>Maximum stories from all categories in this group</small>"
             "<textarea name='categories' required placeholder='ai, developer-tools, developer-news'></textarea>"
-            "<button type='submit'>Add category group</button></form></section>"
-            "<section class='panel'><h2>How topic controls work</h2><p class='muted'>Exclusions win first. If inclusion topics are configured, a story must match at least one in its title, summary, AI tags, or source category. Score and category quotas are applied afterwards.</p></section></aside></div>"
+            "<small class='muted'>Use the same category names assigned to sources on the Sources tab.</small>"
+            "<button type='submit'>Add topic-mix limit</button></form></section></aside></div>"
         )
         return _page(
             "Source Control",
@@ -1063,6 +1081,146 @@ def create_app(
             "<p class='muted'>Review all generated article versions without mixing them into discovery.</p></header>"
             f"<section class='grid'>{cards}</section>",
             active="drafts",
+        )
+
+    @app.get("/publishing", response_class=HTMLResponse)
+    def publishing_hub(notice: str = "") -> HTMLResponse:
+        categories = store.list_wordpress_categories()
+        category_map = {category.category_id: category for category in categories}
+        synced_at = store.wordpress_categories_synced_at()
+        try:
+            wordpress_config = WordPressConfig.from_env()
+            connection_ready = True
+            site_label = wordpress_config.base_url
+            connection_note = (
+                "Connected for previews; draft delivery is disabled by dry-run mode."
+                if wordpress_config.dry_run
+                else "Connected for category sync and draft delivery."
+            )
+        except ValueError as exc:
+            connection_ready = False
+            site_label = "WordPress setup needed"
+            connection_note = str(exc)
+        rows = []
+        ready_count = 0
+        assigned_count = 0
+        for record in store.list_items():
+            content_item_id = record.packet.brief.content_item_id
+            draft = store.get_latest_draft(content_item_id)
+            if draft is None:
+                continue
+            settings = store.get_wordpress_publishing_settings(content_item_id)
+            delivery = store.get_wordpress_delivery(draft.draft_id)
+            selected_names = [
+                category_map[category_id].name
+                for category_id in settings.category_ids
+                if category_id in category_map
+            ]
+            if selected_names:
+                assigned_count += 1
+            if delivery and delivery.status == WordPressDeliveryStatus.DRAFT_CREATED:
+                state = "WordPress draft created"
+                badge = "approved"
+            elif record.status == "approved":
+                state = "Ready for WordPress"
+                badge = "ready_for_approval"
+                ready_count += 1
+            else:
+                state = "Article review in progress"
+                badge = record.status
+            category_text = (
+                ", ".join(selected_names) if selected_names else "No categories assigned"
+            )
+            encoded_id = quote(content_item_id, safe="")
+            rows.append(
+                "<article class='publishing-row'><div>"
+                f"<span class='badge {escape(badge)}'>{escape(state)}</span>"
+                f"<h3>{escape(draft.title)}</h3><small class='muted'>Latest article version</small></div>"
+                f"<div><small class='muted'>WordPress categories</small><p>{escape(category_text)}</p></div>"
+                f"<a class='text-link' href='/items/{encoded_id}?tab=delivery&channel=wordpress'>Configure →</a></article>"
+            )
+        publishing_rows = "".join(rows) or (
+            "<div class='empty'><h2>No article drafts yet</h2>"
+            "<p class='muted'>Drafted articles will appear here when they are ready for publishing setup.</p></div>"
+        )
+        taxonomy = "".join(
+            f"<span class='taxonomy-item'>{escape(category.name)} <small class='muted'>({category.post_count})</small></span>"
+            for category in categories
+        ) or "<p class='muted'>Sync WordPress to load the categories editors can assign to articles.</p>"
+        notice_html = (
+            f"<div class='config-note'>{escape(notice)}</div>" if notice else ""
+        )
+        sync_button = (
+            "<form method='post' action='/publishing/wordpress/categories/sync'>"
+            "<button type='submit'>Sync WordPress categories</button></form>"
+            if connection_ready
+            else "<p class='muted'>Add the WordPress URL, username, and application password to enable syncing.</p>"
+        )
+        return _page(
+            "Publishing Hub",
+            "<header class='page-head'><p class='eyebrow'>PUBLISHING HUB</p>"
+            "<h1>Prepare every article for its <span class='accent'>destination.</span></h1>"
+            "<p class='muted'>Choose website metadata before creating a WordPress draft. Publishing remains a separate manual decision.</p></header>"
+            "<section class='stat-grid'>"
+            f"<article class='stat-card'><small>Article drafts</small><strong class='stat-value'>{len(rows)}</strong><span class='muted'>available for setup</span></article>"
+            f"<article class='stat-card'><small>Ready to deliver</small><strong class='stat-value'>{ready_count}</strong><span class='muted'>approved article(s)</span></article>"
+            f"<article class='stat-card'><small>Category assignments</small><strong class='stat-value'>{assigned_count}</strong><span class='muted'>configured article(s)</span></article>"
+            f"<article class='stat-card'><small>WordPress categories</small><strong class='stat-value'>{len(categories)}</strong><span class='muted'>{'last synced ' + synced_at[:10] if synced_at else 'not synced yet'}</span></article></section>"
+            f"{notice_html}<div class='layout'><section class='panel'><div class='section-head'><h2>Article publishing setup</h2>"
+            "<span class='muted'>Latest versions only</span></div>"
+            f"<div class='publishing-list'>{publishing_rows}</div></section>"
+            "<aside class='stack'><section class='panel connection-card'><p class='eyebrow'>WORDPRESS CONNECTION</p>"
+            f"<h2>{escape(site_label)}</h2><p class='muted'>{escape(connection_note)}</p>{sync_button}</section>"
+            "<section class='panel'><h2>Available categories</h2>"
+            f"<div class='taxonomy-list'>{taxonomy}</div></section></aside></div>",
+            active="publishing",
+        )
+
+    @app.post("/publishing/wordpress/categories/sync")
+    async def sync_wordpress_categories() -> RedirectResponse:
+        try:
+            categories = await publisher_factory().list_categories()
+        except ValueError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail="WordPress categories could not be loaded. Check the connection and credentials.",
+            ) from exc
+        store.replace_wordpress_categories(categories)
+        return RedirectResponse(
+            f"/publishing?notice={len(categories)}%20WordPress%20categories%20synced",
+            status_code=303,
+        )
+
+    @app.post("/items/{content_item_id}/wordpress/settings")
+    def save_wordpress_settings(
+        content_item_id: str,
+        category_id: list[int] = Form(default=[]),
+    ) -> RedirectResponse:
+        draft = store.get_latest_draft(content_item_id)
+        if draft is None:
+            raise HTTPException(status_code=409, detail="Generate an article draft first.")
+        delivery = store.get_wordpress_delivery(draft.draft_id)
+        if delivery and delivery.status == WordPressDeliveryStatus.DRAFT_CREATED:
+            raise HTTPException(
+                status_code=409,
+                detail="This version already exists in WordPress and its categories are locked here.",
+            )
+        try:
+            store.save_wordpress_publishing_settings(
+                WordPressPublishingSettings(
+                    content_item_id=content_item_id,
+                    category_ids=category_id,
+                )
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Editorial item not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/items/{quote(content_item_id, safe='')}?tab=delivery&channel=wordpress",
+            status_code=303,
         )
 
     @app.get("/preferences", response_class=HTMLResponse)
@@ -1457,6 +1615,8 @@ def create_app(
         wordpress_delivery = (
             store.get_wordpress_delivery(latest_draft.draft_id) if latest_draft else None
         )
+        wordpress_categories = store.list_wordpress_categories()
+        wordpress_settings = store.get_wordpress_publishing_settings(content_item_id)
         social_campaign = (
             store.get_social_campaign(latest_draft.draft_id) if latest_draft else None
         )
@@ -1668,6 +1828,42 @@ def create_app(
             "<section class='panel discord-panel'><span class='badge discord-badge'>Discord · optional</span>"
             f"<h2>Team feedback</h2>{discord_controls}</section>"
         )
+        if latest_draft and wordpress_delivery and wordpress_delivery.status == WordPressDeliveryStatus.DRAFT_CREATED:
+            category_names = [
+                category.name
+                for category in wordpress_categories
+                if category.category_id in wordpress_settings.category_ids
+            ]
+            wordpress_category_panel = (
+                "<section class='panel'><p class='eyebrow'>WORDPRESS CATEGORIES</p><h2>Saved with this draft</h2>"
+                f"<p>{escape(', '.join(category_names) if category_names else 'WordPress default category')}</p>"
+                "<small class='muted'>This article version already exists in WordPress. Change its categories in WordPress if needed.</small></section>"
+            )
+        elif latest_draft and wordpress_categories:
+            category_options = "".join(
+                "<label class='category-option'>"
+                f"<input type='checkbox' name='category_id' value='{category.category_id}'"
+                f"{' checked' if category.category_id in wordpress_settings.category_ids else ''}>"
+                f"<span><strong>{escape(category.name)}</strong><small class='muted'>/{escape(category.slug)} · {category.post_count} post(s)</small></span></label>"
+                for category in wordpress_categories
+            )
+            wordpress_category_panel = (
+                "<section class='panel'><p class='eyebrow'>WORDPRESS CATEGORIES</p>"
+                "<h2>Where should this article appear?</h2>"
+                "<p class='muted'>Choose one or more categories from your website. If none are selected, WordPress will use its default category.</p>"
+                f"<form method='post' action='/items/{encoded_id}/wordpress/settings'>"
+                f"<div class='category-grid'>{category_options}</div>"
+                "<button type='submit'>Save WordPress categories</button></form></section>"
+            )
+        elif latest_draft:
+            wordpress_category_panel = (
+                "<section class='panel'><p class='eyebrow'>WORDPRESS CATEGORIES</p>"
+                "<h2>Load categories from your website</h2>"
+                "<p class='muted'>Sync WordPress once, then return here to choose where this article should appear.</p>"
+                "<a class='text-link' href='/publishing'>Open Publishing Hub →</a></section>"
+            )
+        else:
+            wordpress_category_panel = ""
         publishing_panel = ""
         if latest_draft and record.status == "approved":
             if wordpress_delivery and wordpress_delivery.status.value == "draft_created":
@@ -1688,12 +1884,12 @@ def create_app(
                     f"<a class='text-link' href='/items/{encoded_id}/wordpress/preview'>Preview WordPress payload →</a>"
                     f"<form method='post' action='/items/{encoded_id}/wordpress'><button type='submit'>Create WordPress draft</button></form>"
                 )
-            publishing_panel = (
+            publishing_panel = wordpress_category_panel + (
                 "<section class='panel'><span class='badge approved'>WordPress · draft only</span>"
                 f"<h2>Delivery</h2>{publishing_controls}</section>"
             )
         else:
-            publishing_panel = (
+            publishing_panel = wordpress_category_panel + (
                 "<section class='panel'><span class='badge warning'>WordPress · locked</span>"
                 "<h2>Draft delivery</h2><p class='muted'>Approve the latest article version in the Review tab before creating a WordPress draft.</p></section>"
             )
@@ -2666,7 +2862,17 @@ def create_app(
     @app.get("/items/{content_item_id}/wordpress/preview", response_class=HTMLResponse)
     def preview_wordpress(content_item_id: str) -> HTMLResponse:
         _record, draft = approved_draft(content_item_id)
-        payload = build_wordpress_payload(draft)
+        settings = store.get_wordpress_publishing_settings(content_item_id)
+        categories = {
+            category.category_id: category
+            for category in store.list_wordpress_categories()
+        }
+        payload = build_wordpress_payload(draft, settings.category_ids)
+        selected_category_names = [
+            categories[category_id].name
+            for category_id in settings.category_ids
+            if category_id in categories
+        ]
         encoded_id = quote(content_item_id, safe="")
         return _page(
             f"WordPress preview · {draft.title}",
@@ -2678,6 +2884,7 @@ def create_app(
             "<div class='layout'><article class='panel draft'>"
             f"<h2>{escape(str(payload['title']))}</h2>{payload['content']}</article>"
             "<aside class='stack'><section class='panel'><span class='badge approved'>Draft only</span>"
+            f"<h2>Website categories</h2><p>{escape(', '.join(selected_category_names) if selected_category_names else 'WordPress default category')}</p>"
             "<h2>Ready to deliver?</h2><p class='muted'>WordPress will create an unpublished draft. Publishing remains manual.</p>"
             f"<form method='post' action='/items/{encoded_id}/wordpress'><button type='submit'>Create WordPress draft</button></form>"
             f"<a class='text-link' href='/items/{encoded_id}?tab=delivery'>Return to delivery</a></section></aside></div>",
@@ -2687,6 +2894,7 @@ def create_app(
     @app.post("/items/{content_item_id}/wordpress")
     async def create_wordpress_draft(content_item_id: str) -> RedirectResponse:
         _record, draft = approved_draft(content_item_id)
+        settings = store.get_wordpress_publishing_settings(content_item_id)
         try:
             delivery = store.begin_wordpress_delivery(content_item_id, draft.draft_id)
         except KeyError as exc:
@@ -2699,7 +2907,9 @@ def create_app(
                 status_code=303,
             )
         try:
-            result = await publisher_factory().create_draft(draft)
+            result = await publisher_factory().create_draft(
+                draft, settings.category_ids
+            )
         except ValueError as exc:
             store.fail_wordpress_delivery(delivery.delivery_id, str(exc))
             raise HTTPException(status_code=503, detail=str(exc)) from exc

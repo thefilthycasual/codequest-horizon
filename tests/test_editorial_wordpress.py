@@ -9,6 +9,7 @@ from src.editorial.models import (
     DraftDecision,
     DraftParagraph,
     DraftSection,
+    WordPressCategory,
 )
 from src.editorial.quality import evaluate_draft
 from src.editorial.store import EditorialStore
@@ -66,9 +67,27 @@ def _approved_store(path):
 class _StubPublisher:
     def __init__(self):
         self.calls = 0
+        self.category_ids = []
 
-    async def create_draft(self, draft):
+    async def list_categories(self):
+        return [
+            WordPressCategory(
+                category_id=7,
+                name="Developer Tools",
+                slug="developer-tools",
+                post_count=12,
+            ),
+            WordPressCategory(
+                category_id=9,
+                name="AI",
+                slug="ai",
+                post_count=20,
+            ),
+        ]
+
+    async def create_draft(self, draft, category_ids=None):
         self.calls += 1
+        self.category_ids = category_ids or []
         return WordPressDraftResult(
             post_id=42,
             post_url="https://wordpress.example/?p=42",
@@ -77,8 +96,9 @@ class _StubPublisher:
 
 
 class _FlakyPublisher(_StubPublisher):
-    async def create_draft(self, draft):
+    async def create_draft(self, draft, category_ids=None):
         self.calls += 1
+        self.category_ids = category_ids or []
         if self.calls == 1:
             raise RuntimeError("temporary failure")
         return WordPressDraftResult(
@@ -99,6 +119,45 @@ def test_wordpress_payload_is_draft_only_and_escapes_generated_html() -> None:
     assert "&lt;script&gt;" in payload["content"]
     assert "<h2>What &lt;changed&gt;</h2>" in payload["content"]
     assert "https://example.com/beta" in payload["content"]
+    assert build_wordpress_payload(_draft(packet), [7, 9, 7])["categories"] == [7, 9]
+
+
+def test_wordpress_publisher_loads_paginated_categories() -> None:
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        page = int(request.url.params["page"])
+        payload = [
+            {
+                "id": page,
+                "name": f"Category {page}",
+                "slug": f"category-{page}",
+                "parent": 0,
+                "count": page * 2,
+                "description": "",
+            }
+        ]
+        return httpx.Response(200, json=payload, headers={"X-WP-TotalPages": "2"})
+
+    async def load():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            publisher = WordPressPublisher(
+                WordPressConfig(
+                    "https://wp.example",
+                    "editor",
+                    "application-password",
+                    dry_run=True,
+                ),
+                client,
+            )
+            return await publisher.list_categories()
+
+    categories = asyncio.run(load())
+
+    assert [category.category_id for category in categories] == [1, 2]
+    assert all(request.url.path.endswith("/wp-json/wp/v2/categories") for request in requests)
+    assert requests[0].url.params["hide_empty"] == "false"
 
 
 def test_wordpress_publisher_uses_posts_api_basic_auth_and_requires_draft() -> None:
@@ -192,6 +251,40 @@ def test_approved_draft_preview_and_delivery_are_idempotent(tmp_path) -> None:
     assert delivery.post_id == 42
     assert delivery.attempts == 1
     assert "Open in WordPress editor" in detail.text
+
+
+def test_publishing_hub_syncs_and_assigns_real_wordpress_categories(tmp_path) -> None:
+    db_path = tmp_path / "editorial.sqlite3"
+    store, packet, _draft_record = _approved_store(db_path)
+    publisher = _StubPublisher()
+    client = TestClient(
+        create_app(db_path, wordpress_publisher_factory=lambda: publisher)
+    )
+    item_id = packet.brief.content_item_id
+
+    synced = client.post(
+        "/publishing/wordpress/categories/sync", follow_redirects=False
+    )
+    assigned = client.post(
+        f"/items/{item_id}/wordpress/settings",
+        data={"category_id": ["7", "9"]},
+        follow_redirects=False,
+    )
+    hub = client.get("/publishing")
+    delivery_page = client.get(
+        f"/items/{item_id}?tab=delivery&channel=wordpress"
+    )
+    preview = client.get(f"/items/{item_id}/wordpress/preview")
+    delivered = client.post(f"/items/{item_id}/wordpress", follow_redirects=False)
+
+    assert synced.status_code == 303
+    assert assigned.status_code == 303
+    assert "Developer Tools" in hub.text
+    assert "Where should this article appear?" in delivery_page.text
+    assert "Developer Tools, AI" in preview.text
+    assert delivered.status_code == 303
+    assert publisher.category_ids == [7, 9]
+    assert store.get_wordpress_publishing_settings(item_id).category_ids == [7, 9]
 
 
 def test_wordpress_delivery_requires_exact_workspace_approval(tmp_path) -> None:

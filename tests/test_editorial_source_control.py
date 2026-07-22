@@ -108,6 +108,9 @@ def test_source_control_workspace_edits_real_horizon_config(tmp_path) -> None:
     assert "developer tools, Python" in topics.text
     assert "Security core" in topics.text
     assert "supply-chain" in topics.text
+    assert "Choose which stories Horizon keeps" in topics.text
+    assert "Stop one subject dominating the queue" in topics.text
+    assert "not five from each" in topics.text
 
 
 def test_source_control_rejects_invalid_group_and_missing_configuration(tmp_path) -> None:

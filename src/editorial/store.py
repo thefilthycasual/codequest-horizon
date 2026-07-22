@@ -32,6 +32,8 @@ from .models import (
     SocialPostStatus,
     WordPressDelivery,
     WordPressDeliveryStatus,
+    WordPressCategory,
+    WordPressPublishingSettings,
 )
 
 
@@ -287,6 +289,27 @@ class EditorialStore:
             )
             connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS wordpress_categories (
+                    category_id INTEGER PRIMARY KEY,
+                    category_json TEXT NOT NULL,
+                    synced_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS wordpress_publishing_settings (
+                    content_item_id TEXT PRIMARY KEY,
+                    settings_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (content_item_id)
+                        REFERENCES editorial_items(content_item_id)
+                        ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS wordpress_deliveries (
                     delivery_id TEXT PRIMARY KEY,
                     content_item_id TEXT NOT NULL,
@@ -304,6 +327,7 @@ class EditorialStore:
                 )
                 """
             )
+
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS social_campaigns (
@@ -399,6 +423,83 @@ class EditorialStore:
                 )
                 """
             )
+
+    def replace_wordpress_categories(
+        self, categories: list[WordPressCategory]
+    ) -> None:
+        """Atomically replace the cached taxonomy after a successful sync."""
+
+        synced_at = _now()
+        with self._connect() as connection:
+            connection.execute("DELETE FROM wordpress_categories")
+            connection.executemany(
+                "INSERT INTO wordpress_categories "
+                "(category_id, category_json, synced_at) VALUES (?, ?, ?)",
+                [
+                    (category.category_id, category.model_dump_json(), synced_at)
+                    for category in categories
+                ],
+            )
+
+    def list_wordpress_categories(self) -> list[WordPressCategory]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT category_json FROM wordpress_categories "
+                "ORDER BY json_extract(category_json, '$.name') COLLATE NOCASE"
+            ).fetchall()
+        return [
+            WordPressCategory.model_validate_json(row["category_json"])
+            for row in rows
+        ]
+
+    def wordpress_categories_synced_at(self) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT MAX(synced_at) AS synced_at FROM wordpress_categories"
+            ).fetchone()
+        return str(row["synced_at"]) if row and row["synced_at"] else None
+
+    def save_wordpress_publishing_settings(
+        self, settings: WordPressPublishingSettings
+    ) -> WordPressPublishingSettings:
+        if self.get_item(settings.content_item_id) is None:
+            raise KeyError(settings.content_item_id)
+        known_ids = {
+            category.category_id for category in self.list_wordpress_categories()
+        }
+        unknown = set(settings.category_ids) - known_ids
+        if unknown:
+            raise ValueError("Refresh WordPress categories before saving this selection.")
+        settings.category_ids = list(dict.fromkeys(settings.category_ids))
+        settings.updated_at = datetime.now(timezone.utc)
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO wordpress_publishing_settings "
+                "(content_item_id, settings_json, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(content_item_id) DO UPDATE SET "
+                "settings_json = excluded.settings_json, updated_at = excluded.updated_at",
+                (
+                    settings.content_item_id,
+                    settings.model_dump_json(),
+                    settings.updated_at.isoformat(),
+                ),
+            )
+        return settings
+
+    def get_wordpress_publishing_settings(
+        self, content_item_id: str
+    ) -> WordPressPublishingSettings:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT settings_json FROM wordpress_publishing_settings "
+                "WHERE content_item_id = ?",
+                (content_item_id,),
+            ).fetchone()
+        if row:
+            return WordPressPublishingSettings.model_validate_json(
+                row["settings_json"]
+            )
+        return WordPressPublishingSettings(content_item_id=content_item_id)
 
     def start_automation_run(self, trigger: str) -> AutomationRun:
         """Start one run while preventing overlapping workers."""

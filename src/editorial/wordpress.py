@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from .models import ArticleDraft
+from .models import ArticleDraft, WordPressCategory
 
 
 @dataclass(frozen=True)
@@ -80,16 +80,21 @@ def render_wordpress_html(draft: ArticleDraft) -> str:
     return "\n".join(sections)
 
 
-def build_wordpress_payload(draft: ArticleDraft) -> dict[str, Any]:
+def build_wordpress_payload(
+    draft: ArticleDraft, category_ids: list[int] | None = None
+) -> dict[str, Any]:
     """Build an immutable draft-only payload for the WordPress Posts API."""
 
-    return {
+    payload = {
         "title": draft.title,
         "content": render_wordpress_html(draft),
         "excerpt": draft.dek,
         "status": "draft",
         "slug": _delivery_slug(draft),
     }
+    if category_ids:
+        payload["categories"] = list(dict.fromkeys(category_ids))
+    return payload
 
 
 def _delivery_slug(draft: ArticleDraft) -> str:
@@ -109,12 +114,58 @@ class WordPressPublisher:
         self.config = config
         self._client = client
 
-    async def create_draft(self, draft: ArticleDraft) -> WordPressDraftResult:
+    async def list_categories(self) -> list[WordPressCategory]:
+        url = f"{self.config.base_url}/wp-json/wp/v2/categories"
+        auth = httpx.BasicAuth(self.config.username, self.config.application_password)
+
+        async def fetch(client: httpx.AsyncClient) -> list[WordPressCategory]:
+            categories: list[WordPressCategory] = []
+            page = 1
+            while True:
+                response = await client.get(
+                    url,
+                    auth=auth,
+                    params={
+                        "context": "edit",
+                        "hide_empty": "false",
+                        "per_page": 100,
+                        "page": page,
+                    },
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, list):
+                    raise ValueError("WordPress returned an invalid category response.")
+                categories.extend(
+                    WordPressCategory(
+                        category_id=int(item["id"]),
+                        name=str(item["name"]),
+                        slug=str(item["slug"]),
+                        parent_id=int(item.get("parent") or 0),
+                        post_count=int(item.get("count") or 0),
+                        description=str(item.get("description") or ""),
+                    )
+                    for item in payload
+                )
+                total_pages = int(response.headers.get("X-WP-TotalPages", "1"))
+                if page >= total_pages:
+                    break
+                page += 1
+            return categories
+
+        if self._client is not None:
+            return await fetch(self._client)
+        async with httpx.AsyncClient(timeout=20) as client:
+            return await fetch(client)
+
+    async def create_draft(
+        self, draft: ArticleDraft, category_ids: list[int] | None = None
+    ) -> WordPressDraftResult:
         if self.config.dry_run:
             raise ValueError(
                 "WORDPRESS_DRY_RUN is enabled. Preview is available, but delivery is disabled."
             )
-        payload = build_wordpress_payload(draft)
+        payload = build_wordpress_payload(draft, category_ids)
         if payload.get("status") != "draft":
             raise ValueError("WordPress delivery only supports draft status.")
         url = f"{self.config.base_url}/wp-json/wp/v2/posts"

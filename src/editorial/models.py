@@ -315,6 +315,25 @@ class WordPressDeliveryStatus(str, Enum):
     FAILED = "failed"
 
 
+class WordPressCategory(BaseModel):
+    """One category read from the connected WordPress site."""
+
+    category_id: int = Field(ge=1)
+    name: str = Field(min_length=1)
+    slug: str = Field(min_length=1)
+    parent_id: int = Field(default=0, ge=0)
+    post_count: int = Field(default=0, ge=0)
+    description: str = ""
+
+
+class WordPressPublishingSettings(BaseModel):
+    """Per-story WordPress choices made before draft delivery."""
+
+    content_item_id: str
+    category_ids: list[int] = Field(default_factory=list)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class WordPressDelivery(BaseModel):
     """Durable record for delivering one exact approved draft to WordPress."""
 
