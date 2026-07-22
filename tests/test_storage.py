@@ -57,6 +57,27 @@ def test_load_config_success(tmp_path):
     assert config.ai.provider == "anthropic"
 
 
+def test_raw_config_round_trip_preserves_environment_placeholders(tmp_path, monkeypatch):
+    monkeypatch.setenv("HORIZON_AI_BASE_URL", "https://private.example/v1")
+    storage = StorageManager(data_dir=str(tmp_path))
+    raw = {
+        "version": "1.0",
+        "ai": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "api_key_env": "OPENAI_API_KEY",
+            "base_url": "${HORIZON_AI_BASE_URL}",
+        },
+        "sources": {"hackernews": {"enabled": True}},
+        "filtering": {"ai_score_threshold": 6.0, "time_window_hours": 24},
+    }
+
+    storage.save_config_data(raw)
+
+    assert storage.load_config().ai.base_url == "https://private.example/v1"
+    assert storage.load_config_data()["ai"]["base_url"] == "${HORIZON_AI_BASE_URL}"
+
+
 class TestExpandEnvVars:
     """Recursive ${VAR} expansion on config dicts/lists/strings."""
 

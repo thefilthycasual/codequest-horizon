@@ -11,3 +11,68 @@ services:
     # Run daily at 8:00 AM UTC (adjust as needed)
     # For one-time run, use: docker compose run --rm horizon
     command: ["--hours", "24"]
+
+  editorial:
+    profiles: ["editorial"]
+    build: .
+    container_name: codequest-editorial
+    volumes:
+      - ./data:/app/data
+    environment:
+      - OLLAMA_BASE_URL
+      - OLLAMA_API_KEY
+      - OLLAMA_MODEL_WRITER
+      - OLLAMA_MODEL_SOCIAL
+      - OPENAI_API_KEY
+      - IMAGE_GENERATION_ENABLED
+      - IMAGE_GENERATION_PROVIDER
+      - IMAGE_GENERATION_MODEL
+      - IMAGE_GENERATION_BASE_URL
+      - DISCORD_BOT_TOKEN
+      - DISCORD_APPROVAL_CHANNEL_ID
+      - DISCORD_APPLICATION_PUBLIC_KEY
+      - WORDPRESS_BASE_URL
+      - WORDPRESS_USERNAME
+      - WORDPRESS_APP_PASSWORD
+      - WORDPRESS_DRY_RUN
+      - BUFFER_ACCESS_TOKEN
+      - BUFFER_API_KEY
+      - BUFFER_CHANNEL_ID_LINKEDIN
+      - BUFFER_CHANNEL_ID_X
+      - BUFFER_CHANNEL_ID_FACEBOOK
+      - BUFFER_SCHEDULE_TIMEZONE
+      - BUFFER_DRY_RUN
+      - AUTOMATION_ENABLED
+      - AUTOMATION_INTERVAL_MINUTES
+      - AUTOMATION_LOOKBACK_HOURS
+      - AUTOMATION_MAX_CANDIDATES
+      - AUTOMATION_AUTO_SELECT_COUNT
+      - AUTOMATION_AUTO_GENERATE
+      - AUTOMATION_DISCOVERY_CONFIG
+    ports:
+      - "127.0.0.1:8765:8765"
+    entrypoint: ["uv", "run", "codequest-workspace"]
+    command: ["serve", "--host", "0.0.0.0", "--port", "8765"]
+    restart: unless-stopped
+
+  automation:
+    profiles: ["automation"]
+    build: .
+    container_name: codequest-automation
+    volumes:
+      - ./data:/app/data
+    environment:
+      - OLLAMA_BASE_URL
+      - OLLAMA_API_KEY
+      - OLLAMA_MODEL_RESEARCH
+      - OLLAMA_MODEL_WRITER
+      - AUTOMATION_ENABLED
+      - AUTOMATION_INTERVAL_MINUTES
+      - AUTOMATION_LOOKBACK_HOURS
+      - AUTOMATION_MAX_CANDIDATES
+      - AUTOMATION_AUTO_SELECT_COUNT
+      - AUTOMATION_AUTO_GENERATE
+      - AUTOMATION_DISCOVERY_CONFIG
+    entrypoint: ["uv", "run", "codequest-workspace"]
+    command: ["automation", "worker"]
+    restart: unless-stopped

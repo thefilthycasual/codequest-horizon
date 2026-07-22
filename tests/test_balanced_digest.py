@@ -104,6 +104,31 @@ def test_max_items_works_without_category_groups() -> None:
     assert [item.id for item in result.items] == ["higher"]
 
 
+def test_topic_include_and_exclude_rules_run_before_score_filtering() -> None:
+    filtering = FilteringConfig(
+        ai_score_threshold=7,
+        include_keywords=["python", "developer tool"],
+        exclude_keywords=["crypto"],
+    )
+    python = make_item("python-release", 9.0, "language")
+    python.title = "Python ships a developer tool update"
+    crypto = make_item("crypto-python", 10.0, "language")
+    crypto.title = "Crypto project launches Python tooling"
+    unrelated = make_item("celebrity", 10.0, "culture")
+
+    result = asyncio.run(
+        make_orchestrator(filtering).filter_items(
+            [python, crypto, unrelated],
+            topic_dedup=False,
+            apply_balance=False,
+            log=False,
+        )
+    )
+
+    assert [item.id for item in result.items] == ["python-release"]
+    assert result.threshold_count == 1
+
+
 def test_duplicate_category_warns_and_first_group_wins() -> None:
     filtering = FilteringConfig(
         category_groups={

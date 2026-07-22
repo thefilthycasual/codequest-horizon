@@ -1,0 +1,24 @@
+{
+  "id": "rss:codequest:demo-story",
+  "source_type": "rss",
+  "title": "Example launches an open source coding assistant",
+  "url": "https://example.com/open-source-assistant",
+  "content": "<p>Example released a public beta of its coding assistant today. The tool focuses on code review and local developer workflows.</p>",
+  "author": "Example Engineering",
+  "published_at": "2026-07-21T08:00:00Z",
+  "metadata": {
+    "feed_name": "Example Engineering",
+    "category": "developer-tools",
+    "sources": [
+      {
+        "url": "https://independent.example/assistant-review",
+        "title": "Independent hands-on review",
+        "excerpt": "The reviewer tested the beta against two small Python projects."
+      }
+    ]
+  },
+  "ai_score": 8.2,
+  "ai_reason": "The release could change how learners and junior developers approach code review.",
+  "ai_summary": "Example released a public beta focused on code review and local workflows.",
+  "ai_tags": ["open-source", "developer-tools", "code-review"]
+}

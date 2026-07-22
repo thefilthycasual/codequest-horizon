@@ -1,0 +1,76 @@
+{
+  "version": "1.0",
+  "ai": {
+    "provider": "ollama",
+    "model": "${OLLAMA_MODEL_RESEARCH}",
+    "base_url": "${OLLAMA_BASE_URL}",
+    "api_key_env": "OLLAMA_API_KEY",
+    "temperature": 0.2,
+    "max_tokens": 4096,
+    "languages": ["en"]
+  },
+  "sources": {
+    "github": [],
+    "hackernews": {
+      "enabled": true,
+      "fetch_top_stories": 30,
+      "min_score": 50,
+      "category": "developer-news"
+    },
+    "rss": [
+      {
+        "name": "OpenAI News",
+        "url": "https://openai.com/news/rss.xml",
+        "category": "ai",
+        "content_extractor": "article"
+      },
+      {
+        "name": "GitHub Blog",
+        "url": "https://github.blog/feed/",
+        "category": "developer-tools",
+        "content_extractor": "article"
+      },
+      {
+        "name": "Google Developers Blog",
+        "url": "https://developers.googleblog.com/feeds/posts/default",
+        "category": "developer-tools",
+        "content_extractor": "article"
+      }
+    ],
+    "reddit": {
+      "enabled": false,
+      "subreddits": [],
+      "users": [],
+      "fetch_comments": 0
+    },
+    "telegram": {
+      "enabled": false,
+      "channels": []
+    },
+    "ossinsight": {
+      "enabled": false
+    }
+  },
+  "filtering": {
+    "ai_score_threshold": 6.0,
+    "time_window_hours": 48,
+    "max_items": 10,
+    "category_groups": {
+      "codequest-core": {
+        "name": "CodeQuest core topics",
+        "limit": 8,
+        "categories": ["ai", "developer-tools", "developer-news"]
+      }
+    },
+    "default_group": "other",
+    "default_group_limit": 2,
+    "include_keywords": [],
+    "exclude_keywords": []
+  },
+  "extractors": {
+    "article": {
+      "type": "trafilatura",
+      "favor_precision": true
+    }
+  }
+}

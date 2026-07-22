@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 import re
 from typing import Annotated, Literal, Optional, List, Dict, Any, NamedTuple, Union
-from pydantic import BaseModel, HttpUrl, Field, field_validator
+from pydantic import BaseModel, HttpUrl, Field, SecretStr, field_validator
 
 
 class SourceType(str, Enum):
@@ -138,6 +138,7 @@ class AIConfig(BaseModel):
     model: str
     base_url: Optional[str] = None
     api_key_env: str
+    api_key: SecretStr | None = Field(default=None, exclude=True, repr=False)
     temperature: float = 0.3
     max_tokens: int = 4096
     throttle_sec: float = 0.0
@@ -174,8 +175,8 @@ class HackerNewsConfig(BaseModel):
     """Hacker News configuration."""
 
     enabled: bool = True
-    fetch_top_stories: int = 30
-    min_score: int = 100
+    fetch_top_stories: int = Field(default=30, ge=1, le=500)
+    min_score: int = Field(default=100, ge=0)
     category: Optional[str] = None
 
 
@@ -198,7 +199,7 @@ ExtractorConfig = Annotated[
 class RSSSourceConfig(BaseModel):
     """RSS feed source configuration."""
 
-    name: str
+    name: str = Field(min_length=1)
     url: HttpUrl
     enabled: bool = True
     category: Optional[str] = None
@@ -481,12 +482,14 @@ class CategoryGroupConfig(BaseModel):
 class FilteringConfig(BaseModel):
     """Content filtering configuration."""
 
-    ai_score_threshold: float = 7.0
-    time_window_hours: int = 24
+    ai_score_threshold: float = Field(default=7.0, ge=0, le=10)
+    time_window_hours: int = Field(default=24, ge=1, le=720)
     max_items: Optional[int] = Field(default=None, gt=0)
     category_groups: Dict[str, CategoryGroupConfig] = Field(default_factory=dict)
     default_group: str = "other"
     default_group_limit: Optional[int] = Field(default=None, gt=0)
+    include_keywords: List[str] = Field(default_factory=list)
+    exclude_keywords: List[str] = Field(default_factory=list)
 
 
 class Config(BaseModel):

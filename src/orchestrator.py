@@ -182,6 +182,27 @@ class HorizonOrchestrator:
         )
         self.last_fetch_report: Optional[FetchReport] = None
 
+    async def discover_editorial_candidates(
+        self, force_hours: int | None = None
+    ) -> List[ContentItem]:
+        """Run discovery through enrichment without producing or distributing a digest."""
+
+        since = self._determine_time_window(force_hours)
+        all_items = await self.fetch_all_sources(since)
+        if self.last_fetch_report and self.last_fetch_report.all_failed:
+            raise RuntimeError(self.last_fetch_report.failure_message())
+        if not all_items:
+            return []
+
+        merged_items = self.merge_cross_source_duplicates(all_items)
+        analyzed_items = await self._analyze_content(merged_items)
+        filtering_result = await self.filter_items(analyzed_items, apply_balance=False)
+        candidates = filtering_result.items
+        await self._expand_twitter_discussion(candidates)
+        candidates = self.apply_balanced_digest(candidates).items
+        await self._enrich_important_items(candidates)
+        return candidates
+
     async def run(self, force_hours: int = None) -> None:
         """Execute the complete workflow.
 
@@ -647,14 +668,48 @@ class HorizonOrchestrator:
             if threshold is not None
             else self.config.filtering.ai_score_threshold
         )
+        include_keywords = [
+            keyword.casefold().strip()
+            for keyword in self.config.filtering.include_keywords
+            if keyword.strip()
+        ]
+        exclude_keywords = [
+            keyword.casefold().strip()
+            for keyword in self.config.filtering.exclude_keywords
+            if keyword.strip()
+        ]
+
+        def matches_topic_policy(item: ContentItem) -> bool:
+            haystack = " ".join(
+                [
+                    item.title,
+                    item.ai_summary or "",
+                    *(str(tag) for tag in item.ai_tags),
+                    str(item.metadata.get("category") or ""),
+                ]
+            ).casefold()
+            if exclude_keywords and any(
+                keyword in haystack for keyword in exclude_keywords
+            ):
+                return False
+            return not include_keywords or any(
+                keyword in haystack for keyword in include_keywords
+            )
+
+        policy_items = [item for item in items if matches_topic_policy(item)]
         threshold_items = [
             item
-            for item in items
+            for item in policy_items
             if item.ai_score is not None and item.ai_score >= effective_threshold
         ]
         threshold_items.sort(key=lambda item: item.ai_score or 0, reverse=True)
 
         if log:
+            policy_removed = len(items) - len(policy_items)
+            if policy_removed:
+                self.console.print(
+                    f"🎯 Removed {policy_removed} items using topic inclusion/exclusion rules\n"
+                )
             self.console.print(
                 f"⭐️ {len(threshold_items)} items scored ≥ {effective_threshold}\n"
             )
