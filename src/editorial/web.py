@@ -18,8 +18,10 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from .auth import (
     AuthConfig,
     AuthPrincipal,
+    PUBLIC_AUTH_PATHS,
     RequestAuthenticator,
     create_request_authenticator,
+    required_permission,
 )
 
 from .automation import (
@@ -179,6 +181,7 @@ fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linej
 .sidebar-foot{margin-top:auto;border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;align-items:center;gap:10px}
 .status-dot{width:9px;height:9px;border-radius:50%;background:#2db879;box-shadow:0 0 0 4px #e8f8f1}.sidebar-foot strong,.sidebar-foot small{display:block}
 .sidebar-foot small{font-size:11px;color:var(--muted)}.content{margin-left:var(--sidebar);min-height:100vh}.shell{max-width:1320px;padding:42px 38px 80px}
+.clerk-account{display:grid;gap:10px;padding:12px 0}.clerk-account:empty{display:none}.clerk-account #clerk-user-button,.clerk-account #clerk-organization-switcher{min-height:30px}.sign-in-shell{min-height:100vh;display:grid;place-items:center;padding:32px;background:var(--surface)}.sign-in-card{width:min(100%,440px)}
 .stat-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:14px;margin-bottom:28px}.stat-card{background:#fff;border:1px solid var(--line);
 border-radius:14px;padding:20px}.stat-card small{color:var(--muted)}.stat-value{display:block;font-size:34px;font-weight:820;line-height:1.1;letter-spacing:-.04em;margin:7px 0}
 .access-value{display:block;font-size:20px;font-weight:780;line-height:1.2;margin:8px 0 5px}.role-table{width:100%;border-collapse:collapse}.role-table th,.role-table td{padding:12px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}.role-table th:first-child,.role-table td:first-child{width:110px}
@@ -257,6 +260,8 @@ def _page(
     active: str = "overview",
     brand_name: str = "CodeQuest",
     organization_name: str = "CodeQuest workspace",
+    clerk_head: str = "",
+    clerk_account: str = "",
 ) -> HTMLResponse:
     brand_words = [word for word in brand_name.split() if word]
     brand_mark = "".join(word[0] for word in brand_words[:2]).upper()
@@ -281,14 +286,43 @@ def _page(
     return HTMLResponse(
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        f"<title>{escape(title)} · CodeQuest</title><style>{_STYLE}{_ADMIN_STYLE}</style></head>"
+        f"<title>{escape(title)} · CodeQuest</title><style>{_STYLE}{_ADMIN_STYLE}</style>{clerk_head}</head>"
         f"<body><aside class='sidebar'><a class='workspace' href='/workspace'><div class='workspace-mark'>{escape(brand_mark)}</div>"
         f"<div><strong>{escape(brand_name)}</strong><small>Switch brand workspace</small></div></a>"
         f"<p class='nav-label'>Workspace</p><nav class='side-nav'>{navigation}</nav>"
-        f"<div class='sidebar-foot'><span class='status-dot'></span><div><strong>{escape(organization_name)}</strong>"
+        f"{clerk_account}<div class='sidebar-foot'><span class='status-dot'></span><div><strong>{escape(organization_name)}</strong>"
         "<small>Horizon discovery connected</small></div></div></aside>"
         f"<main class='content'><div class='shell'>{body}</div></main></body></html>"
     )
+
+
+def _clerk_browser_markup(config: AuthConfig) -> tuple[str, str]:
+    """Return public Clerk browser assets and mount points; never include secret keys."""
+
+    if not config.clerk_frontend_ready:
+        return "", ""
+    frontend_url = str(config.frontend_api_url)
+    parsed = urlsplit(frontend_url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        return "", ""
+    base = escape(frontend_url, quote=True)
+    publishable_key = escape(config.publishable_key, quote=True)
+    head = (
+        f"<script defer crossorigin='anonymous' src='{base}/npm/@clerk/ui@1/dist/ui.browser.js'></script>"
+        f"<script defer crossorigin='anonymous' data-clerk-publishable-key='{publishable_key}' "
+        f"src='{base}/npm/@clerk/clerk-js@6/dist/clerk.browser.js'></script>"
+        "<script>window.addEventListener('load',async()=>{"
+        "if(!window.Clerk)return;await Clerk.load({ui:{ClerkUI:window.__internal_ClerkUICtor}});"
+        "const user=document.getElementById('clerk-user-button');if(user&&Clerk.user)Clerk.mountUserButton(user);"
+        "const org=document.getElementById('clerk-organization-switcher');if(org&&Clerk.user)Clerk.mountOrganizationSwitcher(org,{hidePersonal:true});"
+        "const signIn=document.getElementById('clerk-sign-in');if(signIn&&!Clerk.user)Clerk.mountSignIn(signIn);"
+        "});</script>"
+    )
+    account = (
+        "<div class='clerk-account' aria-label='Signed-in account'>"
+        "<div id='clerk-organization-switcher'></div><div id='clerk-user-button'></div></div>"
+    )
+    return head, account
 
 
 def _rules_html(profile) -> str:
@@ -415,17 +449,28 @@ def create_app(
     async def attach_workspace_identity(request: Request, call_next):
         principal = authenticator.authenticate(request)
         request.state.principal = principal
-        if (
+        protected = (
             active_auth_config.clerk_selected
             and active_auth_config.enforce
-            and not principal.authenticated
-            and request.url.path not in {"/health", "/api/auth/status"}
-        ):
+            and request.url.path not in PUBLIC_AUTH_PATHS
+        )
+        if protected and not principal.authenticated:
             accepts_html = "text/html" in request.headers.get("accept", "")
             if accepts_html and active_auth_config.sign_in_url:
                 return RedirectResponse(active_auth_config.sign_in_url, status_code=303)
             return JSONResponse(
                 {"detail": principal.reason or "Sign in is required."}, status_code=401
+            )
+        if protected and not principal.organization_id:
+            return JSONResponse(
+                {"detail": "Select a Clerk organisation to open this workspace."},
+                status_code=403,
+            )
+        permission = required_permission(request.method, request.url.path)
+        if protected and not principal.can(permission):
+            return JSONResponse(
+                {"detail": "Your workspace role does not allow this action."},
+                status_code=403,
             )
         return await call_next(request)
     try:
@@ -438,12 +483,15 @@ def create_app(
     def render_page(title: str, body: str, active: str = "overview") -> HTMLResponse:
         brand = store.get_brand_profile()
         organization = store.get_organization(brand.organization_id)
+        clerk_head, clerk_account = _clerk_browser_markup(active_auth_config)
         return _page(
             title,
             body,
             active=active,
             brand_name=brand.name,
             organization_name=organization.name,
+            clerk_head=clerk_head,
+            clerk_account=clerk_account,
         )
     bridge_factory = discord_bridge_factory or (
         lambda: DiscordApprovalBridge(DiscordConfig.from_env())
@@ -697,7 +745,39 @@ def create_app(
                 "authenticated": principal.authenticated,
                 "role": principal.role.value,
                 "organization_selected": bool(principal.organization_id),
+                "frontend_ready": active_auth_config.clerk_frontend_ready,
+                "permissions": sorted(
+                    permission
+                    for permission in (
+                        "content:read",
+                        "content:write",
+                        "content:approve",
+                        "workspace:manage",
+                    )
+                    if principal.can(permission)
+                ),
             }
+        )
+
+    @app.get("/sign-in", response_class=HTMLResponse)
+    def clerk_sign_in(request: Request):
+        principal: AuthPrincipal = request.state.principal
+        if principal.authenticated:
+            return RedirectResponse("/", status_code=303)
+        clerk_head, _ = _clerk_browser_markup(active_auth_config)
+        if not active_auth_config.clerk_frontend_ready:
+            message = (
+                "Clerk sign-in is not configured yet. An administrator must add the "
+                "publishable key and Frontend API address before enabling access enforcement."
+            )
+            content = f"<article class='panel sign-in-card'><h1>Sign-in setup needed</h1><p class='muted'>{escape(message)}</p></article>"
+        else:
+            content = "<div id='clerk-sign-in' aria-label='Sign in to CodeQuest'></div>"
+        return HTMLResponse(
+            "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            f"<title>Sign in · CodeQuest</title><style>{_STYLE}{_ADMIN_STYLE}</style>{clerk_head}</head>"
+            f"<body><main class='sign-in-shell'>{content}</main></body></html>"
         )
 
     @app.get("/access", response_class=HTMLResponse)
@@ -714,6 +794,11 @@ def create_app(
             else "Local owner mode"
         )
         enforcement_label = "Protected" if active_auth_config.enforce else "Preview only"
+        browser_label = (
+            "Connected"
+            if active_auth_config.clerk_frontend_ready
+            else "Waiting for frontend address"
+        )
         role_rows = "".join(
             (
                 "<tr><td><strong>Owner</strong></td><td>Full organisation, billing-ready, integrations, editorial and approval control</td></tr>",
@@ -738,6 +823,7 @@ def create_app(
             "<ol><li>Add Clerk keys and trusted website addresses.</li><li>Connect the future frontend sign-in and organisation switcher.</li><li>Turn on enforcement only after an owner account has been tested.</li></ol>"
             "<p class='muted'>Until step three, local development keeps working and no team member can be accidentally locked out.</p></section>"
             "<section class='panel'><h2>Already wired</h2><p class='muted'>Every request now has a standard identity context with user, organisation, session and role. The same boundary works for today’s FastAPI pages and a future React or Next.js frontend.</p>"
+            f"<p><span class='badge'>{escape(browser_label)}</span></p>"
             "<a class='text-link' href='/integrations'>Review Clerk configuration status →</a></section></aside></div>",
             active="access",
         )

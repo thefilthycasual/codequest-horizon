@@ -135,6 +135,7 @@ def integration_inventory(
         _value("CLERK_PUBLISHABLE_KEY"),
         _value("CLERK_JWT_KEY") or _value("CLERK_SECRET_KEY"),
         _value("CLERK_AUTHORIZED_PARTIES"),
+        _value("CLERK_FRONTEND_API_URL"),
     )
     clerk_state = _configured_state(clerk_values, optional=True)
     if auth_provider != "clerk":
@@ -164,6 +165,7 @@ def integration_inventory(
                 f"Identity provider: {'Clerk' if auth_provider == 'clerk' else 'Local development'}",
                 f"Access enforcement: {'on' if auth_enforced else 'off'}",
                 "Roles: owner, admin, editor, viewer",
+                f"Browser sign-in: {'ready' if _value('CLERK_FRONTEND_API_URL') else 'not connected'}",
             ),
             configuration_names=(
                 "AUTH_PROVIDER",
@@ -172,6 +174,8 @@ def integration_inventory(
                 "CLERK_SECRET_KEY",
                 "CLERK_JWT_KEY",
                 "CLERK_AUTHORIZED_PARTIES",
+                "CLERK_FRONTEND_API_URL",
+                "CLERK_SIGN_IN_URL",
             ),
             test_label="Review access readiness",
             optional=True,

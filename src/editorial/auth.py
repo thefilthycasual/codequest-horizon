@@ -24,6 +24,20 @@ ROLE_PERMISSIONS: dict[WorkspaceRole, frozenset[str]] = {
     WorkspaceRole.VIEWER: frozenset({"content:read"}),
 }
 
+PUBLIC_AUTH_PATHS = frozenset({"/health", "/api/auth/status", "/sign-in", "/discord/interactions"})
+
+
+def required_permission(method: str, path: str) -> str:
+    """Translate an HTTP action into the minimum workspace permission."""
+
+    if method.upper() in {"GET", "HEAD", "OPTIONS"}:
+        return "content:read"
+    if path.startswith(("/workspace", "/integrations", "/sources")) or path == "/operations/run":
+        return "workspace:manage"
+    if path.endswith("/decision") or "/decision/" in path:
+        return "content:approve"
+    return "content:write"
+
 
 @dataclass(frozen=True)
 class AuthConfig:
@@ -34,6 +48,7 @@ class AuthConfig:
     jwt_key: str = ""
     authorized_parties: tuple[str, ...] = ()
     sign_in_url: str = ""
+    frontend_api_url: str = ""
 
     @classmethod
     def from_env(cls) -> "AuthConfig":
@@ -51,6 +66,7 @@ class AuthConfig:
             jwt_key=os.getenv("CLERK_JWT_KEY", "").replace("\\n", "\n").strip(),
             authorized_parties=parties,
             sign_in_url=os.getenv("CLERK_SIGN_IN_URL", "").strip(),
+            frontend_api_url=os.getenv("CLERK_FRONTEND_API_URL", "").strip().rstrip("/"),
         )
 
     @property
@@ -64,6 +80,10 @@ class AuthConfig:
             and (self.jwt_key or self.secret_key)
             and self.authorized_parties
         )
+
+    @property
+    def clerk_frontend_ready(self) -> bool:
+        return bool(self.clerk_selected and self.publishable_key and self.frontend_api_url)
 
 
 @dataclass(frozen=True)
@@ -104,7 +124,7 @@ def _normalise_clerk_role(value: str) -> WorkspaceRole:
         "owner": WorkspaceRole.OWNER,
         "admin": WorkspaceRole.ADMIN,
         "editor": WorkspaceRole.EDITOR,
-        "member": WorkspaceRole.EDITOR,
+        "member": WorkspaceRole.VIEWER,
         "viewer": WorkspaceRole.VIEWER,
     }.get(role, WorkspaceRole.VIEWER)
 
