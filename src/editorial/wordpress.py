@@ -4,13 +4,34 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from html import escape
+from html import escape, unescape
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 
-from .models import ArticleDraft, WordPressCategory
+from .models import ArticleDraft, WordPressCategory, WordPressMediaItem
+
+
+_IMAGE_SIGNATURES = {
+    "image/jpeg": lambda content: content.startswith(b"\xff\xd8\xff"),
+    "image/png": lambda content: content.startswith(b"\x89PNG\r\n\x1a\n"),
+    "image/webp": lambda content: content.startswith(b"RIFF")
+    and content[8:12] == b"WEBP",
+    "image/gif": lambda content: content.startswith((b"GIF87a", b"GIF89a")),
+}
+
+
+def validate_image_upload(content_type: str, content: bytes) -> None:
+    validator = _IMAGE_SIGNATURES.get(content_type)
+    if validator is None:
+        raise ValueError(
+            "WordPress media upload supports JPEG, PNG, WebP, and GIF images."
+        )
+    if not content or len(content) > 10 * 1024 * 1024:
+        raise ValueError("The image must be between 1 byte and 10 MB.")
+    if not validator(content):
+        raise ValueError("The file contents do not match the selected image format.")
 
 
 @dataclass(frozen=True)
@@ -81,7 +102,9 @@ def render_wordpress_html(draft: ArticleDraft) -> str:
 
 
 def build_wordpress_payload(
-    draft: ArticleDraft, category_ids: list[int] | None = None
+    draft: ArticleDraft,
+    category_ids: list[int] | None = None,
+    featured_media_id: int | None = None,
 ) -> dict[str, Any]:
     """Build an immutable draft-only payload for the WordPress Posts API."""
 
@@ -94,6 +117,8 @@ def build_wordpress_payload(
     }
     if category_ids:
         payload["categories"] = list(dict.fromkeys(category_ids))
+    if featured_media_id is not None:
+        payload["featured_media"] = featured_media_id
     return payload
 
 
@@ -158,14 +183,108 @@ class WordPressPublisher:
         async with httpx.AsyncClient(timeout=20) as client:
             return await fetch(client)
 
+    @staticmethod
+    def _media_item(item: dict[str, Any]) -> WordPressMediaItem:
+        details = item.get("media_details") or {}
+        sizes = details.get("sizes") or {}
+        thumbnail = sizes.get("medium") or sizes.get("thumbnail") or {}
+        title = item.get("title") or {}
+        caption = item.get("caption") or {}
+        return WordPressMediaItem(
+            media_id=int(item["id"]),
+            title=unescape(
+                str(title.get("rendered") or item.get("slug") or f"Media {item['id']}")
+            ),
+            filename=str(details.get("file") or "").rsplit("/", 1)[-1],
+            source_url=str(item["source_url"]),
+            thumbnail_url=str(thumbnail.get("source_url") or item["source_url"]),
+            mime_type=str(item.get("mime_type") or "image/jpeg"),
+            alt_text=str(item.get("alt_text") or ""),
+            caption=str(caption.get("rendered") or ""),
+            width=int(details["width"]) if details.get("width") else None,
+            height=int(details["height"]) if details.get("height") else None,
+            uploaded_at=item.get("date_gmt") or item.get("date"),
+        )
+
+    async def list_media(self) -> list[WordPressMediaItem]:
+        url = f"{self.config.base_url}/wp-json/wp/v2/media"
+        auth = httpx.BasicAuth(self.config.username, self.config.application_password)
+
+        async def fetch(client: httpx.AsyncClient) -> list[WordPressMediaItem]:
+            media: list[WordPressMediaItem] = []
+            page = 1
+            while True:
+                response = await client.get(
+                    url,
+                    auth=auth,
+                    params={
+                        "context": "edit",
+                        "media_type": "image",
+                        "per_page": 100,
+                        "page": page,
+                        "orderby": "date",
+                        "order": "desc",
+                    },
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, list):
+                    raise ValueError("WordPress returned an invalid media response.")
+                media.extend(self._media_item(item) for item in payload)
+                total_pages = int(response.headers.get("X-WP-TotalPages", "1"))
+                if page >= total_pages:
+                    break
+                page += 1
+            return media
+
+        if self._client is not None:
+            return await fetch(self._client)
+        async with httpx.AsyncClient(timeout=30) as client:
+            return await fetch(client)
+
+    async def upload_media(
+        self,
+        *,
+        filename: str,
+        content_type: str,
+        content: bytes,
+        title: str,
+        alt_text: str,
+    ) -> WordPressMediaItem:
+        if self.config.dry_run:
+            raise ValueError(
+                "WORDPRESS_DRY_RUN is enabled. Media upload is disabled."
+            )
+        validate_image_upload(content_type, content)
+        url = f"{self.config.base_url}/wp-json/wp/v2/media"
+        auth = httpx.BasicAuth(self.config.username, self.config.application_password)
+
+        async def upload(client: httpx.AsyncClient) -> WordPressMediaItem:
+            response = await client.post(
+                url,
+                auth=auth,
+                files={"file": (filename, content, content_type)},
+                data={"title": title, "alt_text": alt_text},
+            )
+            response.raise_for_status()
+            return self._media_item(response.json())
+
+        if self._client is not None:
+            return await upload(self._client)
+        async with httpx.AsyncClient(timeout=60) as client:
+            return await upload(client)
+
     async def create_draft(
-        self, draft: ArticleDraft, category_ids: list[int] | None = None
+        self,
+        draft: ArticleDraft,
+        category_ids: list[int] | None = None,
+        featured_media_id: int | None = None,
     ) -> WordPressDraftResult:
         if self.config.dry_run:
             raise ValueError(
                 "WORDPRESS_DRY_RUN is enabled. Preview is available, but delivery is disabled."
             )
-        payload = build_wordpress_payload(draft, category_ids)
+        payload = build_wordpress_payload(draft, category_ids, featured_media_id)
         if payload.get("status") != "draft":
             raise ValueError("WordPress delivery only supports draft status.")
         url = f"{self.config.base_url}/wp-json/wp/v2/posts"

@@ -326,11 +326,28 @@ class WordPressCategory(BaseModel):
     description: str = ""
 
 
+class WordPressMediaItem(BaseModel):
+    """One image from the connected WordPress media library."""
+
+    media_id: int = Field(ge=1)
+    title: str = Field(min_length=1)
+    filename: str = ""
+    source_url: str = Field(min_length=1)
+    thumbnail_url: str = ""
+    mime_type: str = Field(pattern=r"^image/")
+    alt_text: str = ""
+    caption: str = ""
+    width: int | None = Field(default=None, ge=1)
+    height: int | None = Field(default=None, ge=1)
+    uploaded_at: datetime | None = None
+
+
 class WordPressPublishingSettings(BaseModel):
     """Per-story WordPress choices made before draft delivery."""
 
     content_item_id: str
     category_ids: list[int] = Field(default_factory=list)
+    featured_media_id: int | None = Field(default=None, ge=1)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

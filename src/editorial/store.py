@@ -33,6 +33,7 @@ from .models import (
     WordPressDelivery,
     WordPressDeliveryStatus,
     WordPressCategory,
+    WordPressMediaItem,
     WordPressPublishingSettings,
 )
 
@@ -310,6 +311,15 @@ class EditorialStore:
             )
             connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS wordpress_media (
+                    media_id INTEGER PRIMARY KEY,
+                    media_json TEXT NOT NULL,
+                    synced_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS wordpress_deliveries (
                     delivery_id TEXT PRIMARY KEY,
                     content_item_id TEXT NOT NULL,
@@ -459,6 +469,50 @@ class EditorialStore:
             ).fetchone()
         return str(row["synced_at"]) if row and row["synced_at"] else None
 
+    def replace_wordpress_media(self, media: list[WordPressMediaItem]) -> None:
+        """Atomically replace cached media after a successful library sync."""
+
+        synced_at = _now()
+        with self._connect() as connection:
+            connection.execute("DELETE FROM wordpress_media")
+            connection.executemany(
+                "INSERT INTO wordpress_media "
+                "(media_id, media_json, synced_at) VALUES (?, ?, ?)",
+                [
+                    (item.media_id, item.model_dump_json(), synced_at)
+                    for item in media
+                ],
+            )
+
+    def upsert_wordpress_media(self, item: WordPressMediaItem) -> None:
+        synced_at = _now()
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO wordpress_media (media_id, media_json, synced_at) "
+                "VALUES (?, ?, ?) ON CONFLICT(media_id) DO UPDATE SET "
+                "media_json = excluded.media_json, synced_at = excluded.synced_at",
+                (item.media_id, item.model_dump_json(), synced_at),
+            )
+
+    def list_wordpress_media(self) -> list[WordPressMediaItem]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT media_json FROM wordpress_media "
+                "ORDER BY COALESCE(json_extract(media_json, '$.uploaded_at'), '') DESC, "
+                "media_id DESC"
+            ).fetchall()
+        return [
+            WordPressMediaItem.model_validate_json(row["media_json"])
+            for row in rows
+        ]
+
+    def wordpress_media_synced_at(self) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT MAX(synced_at) AS synced_at FROM wordpress_media"
+            ).fetchone()
+        return str(row["synced_at"]) if row and row["synced_at"] else None
+
     def save_wordpress_publishing_settings(
         self, settings: WordPressPublishingSettings
     ) -> WordPressPublishingSettings:
@@ -470,6 +524,16 @@ class EditorialStore:
         unknown = set(settings.category_ids) - known_ids
         if unknown:
             raise ValueError("Refresh WordPress categories before saving this selection.")
+        known_media_ids = {
+            item.media_id
+            for item in self.list_wordpress_media()
+            if item.mime_type in {"image/jpeg", "image/png", "image/webp", "image/gif"}
+        }
+        if (
+            settings.featured_media_id is not None
+            and settings.featured_media_id not in known_media_ids
+        ):
+            raise ValueError("Refresh the WordPress media library before saving this image.")
         settings.category_ids = list(dict.fromkeys(settings.category_ids))
         settings.updated_at = datetime.now(timezone.utc)
         with self._connect() as connection:

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import quote
 
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from .automation import (
@@ -83,6 +83,7 @@ from .wordpress import (
     WordPressConfig,
     WordPressPublisher,
     build_wordpress_payload,
+    validate_image_upload,
 )
 
 
@@ -173,6 +174,8 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 .radar-tools{display:grid;grid-template-columns:minmax(220px,1fr) 180px 150px 170px auto;gap:10px;margin-bottom:20px}.radar-tools button{width:auto;padding-left:22px;padding-right:22px}.radar-list{display:grid;gap:12px}.radar-row{display:grid;grid-template-columns:86px minmax(0,1fr) 190px;gap:20px;align-items:center}.score-box{display:grid;place-items:center;align-content:center;min-height:82px;border-radius:15px;background:var(--ink);color:#fff}.score-box strong{font-size:27px;line-height:1}.score-box small{font-size:10px;line-height:1.25;text-align:center;text-transform:uppercase;letter-spacing:.05em;opacity:.68}.score-box.pending{background:#f0f1f3;color:var(--muted)}.radar-copy h2{margin:6px 0}.radar-copy h2 a{text-decoration:none}.radar-copy h2 a:hover{color:var(--accent)}.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.tag{padding:3px 8px;border-radius:999px;background:var(--accent-soft);color:#b85618;font-size:11px;font-weight:750}.radar-side{text-align:right}.radar-side .meta{justify-content:flex-end}.intelligence-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.signal-card{padding:17px;border:1px solid var(--line);border-radius:14px;background:#fafafa}.signal-card small,.signal-card strong{display:block}.signal-card strong{font-size:18px;margin-top:3px}.insight-copy{white-space:pre-wrap}.engagement-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.engagement-item{padding:10px 12px;border-radius:10px;background:#f7f7f8}.engagement-item strong,.engagement-item small{display:block}
 .source-tabs{display:flex;gap:6px;padding:6px;background:#eceef1;border-radius:13px;margin-bottom:24px}.source-tab{padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.source-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}.source-list{display:grid;gap:14px}.source-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:start}.source-card form{grid-column:1/-1;display:grid;grid-template-columns:1.1fr 1.8fr 1fr auto;gap:10px}.source-card form button{grid-column:1/-1}.toggle-field{display:flex;align-items:center;gap:8px;padding:10px}.toggle-field input{width:auto}.source-state{display:inline-block;width:10px;height:10px;border-radius:50%;background:#b8bdc5;margin:0 8px 1px 0}.source-state.on{background:var(--success);box-shadow:0 0 0 4px #e8f8f1}.topic-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.topic-form .span-2,.topic-form button{grid-column:1/-1}.topic-form textarea{min-height:92px}.group-card form{display:grid;grid-template-columns:1fr 1fr 110px;gap:10px}.group-card form .group-categories,.group-card form button{grid-column:1/-1}.config-note{padding:13px 16px;border:1px solid #cdebdc;border-radius:12px;background:#eefaf5;color:var(--success);margin-bottom:18px}
 .category-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.category-option{display:grid;grid-template-columns:auto 1fr;gap:9px;align-items:start;padding:11px;border:1px solid var(--line);border-radius:11px;background:#fafafa}.category-option input{width:auto;margin-top:4px}.category-option small,.category-option strong{display:block}.publishing-list{display:grid}.publishing-row{display:grid;grid-template-columns:minmax(0,1fr) 220px auto;gap:18px;align-items:center;padding:17px 0;border-top:1px solid var(--line)}.publishing-row:first-child{border-top:0}.publishing-row h3{margin:4px 0}.taxonomy-list{display:flex;gap:7px;flex-wrap:wrap}.taxonomy-item{padding:7px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:12px}.connection-card{border-color:#cdebdc;background:#f8fffb}
+.media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}.media-card{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}.media-card img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover;background:#eceef1}.media-card-copy{padding:12px}.media-card-copy strong,.media-card-copy small{display:block;overflow-wrap:anywhere}.media-choice{position:relative;padding:0;overflow:hidden}.media-choice input{position:absolute;top:10px;left:10px;width:18px;height:18px;z-index:2}.media-choice img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover}.media-choice span{display:block;padding:10px}.upload-panel input[type=file]{background:#fff}.publishing-tabs{display:flex;gap:6px;padding:6px;background:#eceef1;border-radius:13px;margin-bottom:24px}.publishing-tab{padding:9px 15px;border-radius:9px;text-decoration:none;color:#5f6671;font-weight:750}.publishing-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(17,24,39,.08)}
+.media-search{display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:18px}.media-search button{width:auto}.media-grid+.filter-tabs{margin-top:20px}
 @media(max-width:980px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:820px){.sidebar{position:static;width:auto;padding:12px}.workspace{padding-bottom:12px;margin-bottom:8px}.workspace small,.nav-label,.sidebar-foot{display:none}
 .side-nav{display:flex;overflow:auto}.nav-item{white-space:nowrap}.content{margin-left:0}.shell{padding:30px 18px 70px}.story-tabs{border-radius:10px}.story-tab{padding:8px 12px}}
@@ -182,6 +185,7 @@ gap:7px;white-space:nowrap;padding:9px 15px;border-radius:9px;text-decoration:no
 @media(max-width:620px){.radar-tools,.intelligence-grid{grid-template-columns:1fr}.radar-row{grid-template-columns:1fr}.score-box{min-height:64px}.radar-side{grid-column:1}}
 @media(max-width:760px){.source-card form,.topic-form,.group-card form{grid-template-columns:1fr}.topic-form .span-2,.topic-form button,.group-card form .group-categories,.group-card form button,.source-card form button{grid-column:1}}
 @media(max-width:760px){.publishing-row{grid-template-columns:1fr}.category-grid{grid-template-columns:1fr}}
+@media(max-width:560px){.media-search{grid-template-columns:1fr}.media-search button{width:100%}}
 @media(max-width:560px){.run-row{grid-template-columns:1fr}.stat-grid{grid-template-columns:1fr 1fr}.queue-tools form{grid-template-columns:1fr}.queue-tools button{width:100%}}
 @media(max-width:480px){.nav-item{font-size:13px;padding:9px}.nav-icon{display:none}}
 """
@@ -1084,10 +1088,36 @@ def create_app(
         )
 
     @app.get("/publishing", response_class=HTMLResponse)
-    def publishing_hub(notice: str = "") -> HTMLResponse:
+    def publishing_hub(
+        tab: str = "articles", notice: str = "", q: str = "", page: int = 1
+    ) -> HTMLResponse:
+        if tab not in {"articles", "categories", "media"}:
+            raise HTTPException(status_code=404, detail="Publishing tab not found")
         categories = store.list_wordpress_categories()
         category_map = {category.category_id: category for category in categories}
         synced_at = store.wordpress_categories_synced_at()
+        media = store.list_wordpress_media()
+        media_map = {item.media_id: item for item in media}
+        media_synced_at = store.wordpress_media_synced_at()
+        if page < 1:
+            raise HTTPException(status_code=404, detail="Media page not found")
+        media_search = q.strip()
+        filtered_media = [
+            item
+            for item in media
+            if not media_search
+            or media_search.casefold()
+            in " ".join([item.title, item.filename, item.alt_text]).casefold()
+        ]
+        media_page_size = 24
+        media_page_count = max(
+            1, (len(filtered_media) + media_page_size - 1) // media_page_size
+        )
+        if page > media_page_count:
+            raise HTTPException(status_code=404, detail="Media page not found")
+        visible_media = filtered_media[
+            (page - 1) * media_page_size : page * media_page_size
+        ]
         try:
             wordpress_config = WordPressConfig.from_env()
             connection_ready = True
@@ -1118,6 +1148,11 @@ def create_app(
             ]
             if selected_names:
                 assigned_count += 1
+            featured_image = (
+                media_map.get(settings.featured_media_id)
+                if settings.featured_media_id is not None
+                else None
+            )
             if delivery and delivery.status == WordPressDeliveryStatus.DRAFT_CREATED:
                 state = "WordPress draft created"
                 badge = "approved"
@@ -1128,15 +1163,17 @@ def create_app(
             else:
                 state = "Article review in progress"
                 badge = record.status
-            category_text = (
+            placement_text = (
                 ", ".join(selected_names) if selected_names else "No categories assigned"
             )
+            if featured_image:
+                placement_text += f" · Image: {featured_image.title}"
             encoded_id = quote(content_item_id, safe="")
             rows.append(
                 "<article class='publishing-row'><div>"
                 f"<span class='badge {escape(badge)}'>{escape(state)}</span>"
                 f"<h3>{escape(draft.title)}</h3><small class='muted'>Latest article version</small></div>"
-                f"<div><small class='muted'>WordPress categories</small><p>{escape(category_text)}</p></div>"
+                f"<div><small class='muted'>Website placement</small><p>{escape(placement_text)}</p></div>"
                 f"<a class='text-link' href='/items/{encoded_id}?tab=delivery&channel=wordpress'>Configure →</a></article>"
             )
         publishing_rows = "".join(rows) or (
@@ -1156,6 +1193,73 @@ def create_app(
             if connection_ready
             else "<p class='muted'>Add the WordPress URL, username, and application password to enable syncing.</p>"
         )
+        media_cards = "".join(
+            "<article class='media-card'>"
+            f"<img src='{escape(item.thumbnail_url or item.source_url, quote=True)}' alt='{escape(item.alt_text or item.title, quote=True)}' loading='lazy'>"
+            f"<div class='media-card-copy'><strong>{escape(item.title)}</strong>"
+            f"<small class='muted'>{escape(item.filename or item.mime_type)}</small>"
+            f"<small class='muted'>{f'{item.width} × {item.height}' if item.width and item.height else 'Dimensions unavailable'}</small></div></article>"
+            for item in visible_media
+        ) or (
+            "<section class='panel empty'><h2>No matching images</h2>"
+            "<p class='muted'>Try another search or sync the WordPress media library.</p></section>"
+        )
+        publishing_tabs = "<nav class='publishing-tabs' aria-label='Publishing Hub sections'>" + "".join(
+            f"<a class='publishing-tab{' active' if key == tab else ''}' href='/publishing?tab={key}'>{label}</a>"
+            for key, label in (
+                ("articles", "Articles"),
+                ("categories", f"Categories ({len(categories)})"),
+                ("media", f"Media library ({len(media)})"),
+            )
+        ) + "</nav>"
+        articles_body = (
+            "<div class='layout'><section class='panel'><div class='section-head'><h2>Article publishing setup</h2>"
+            "<span class='muted'>Latest versions only</span></div>"
+            f"<div class='publishing-list'>{publishing_rows}</div></section>"
+            "<aside class='stack'><section class='panel connection-card'><p class='eyebrow'>WORDPRESS CONNECTION</p>"
+            f"<h2>{escape(site_label)}</h2><p class='muted'>{escape(connection_note)}</p>"
+            "<p class='muted'>Categories and featured images are configured before draft delivery.</p></section></aside></div>"
+        )
+        categories_body = (
+            "<div class='layout'><section class='panel'><div class='section-head'><h2>Website categories</h2>"
+            f"<span class='muted'>{'Synced ' + synced_at[:10] if synced_at else 'Not synced'}</span></div>"
+            f"<div class='taxonomy-list'>{taxonomy}</div></section>"
+            "<aside class='stack'><section class='panel connection-card'><p class='eyebrow'>REFRESH FROM WORDPRESS</p>"
+            "<h2>Keep category choices current</h2><p class='muted'>Sync after categories are added, renamed, or reorganised in WordPress.</p>"
+            f"{sync_button}</section></aside></div>"
+        )
+        upload_disabled = " disabled" if not connection_ready or wordpress_config.dry_run else ""
+        upload_note = (
+            "Media upload is disabled while WordPress dry-run mode is on. Existing images can still be synced and selected."
+            if connection_ready and wordpress_config.dry_run
+            else "JPEG, PNG, WebP, or GIF · maximum 10 MB. Uploading adds the image to WordPress but does not publish an article."
+        )
+        media_sync = (
+            "<form method='post' action='/publishing/wordpress/media/sync'><button type='submit'>Sync media library</button></form>"
+            if connection_ready
+            else "<p class='muted'>Configure WordPress before syncing media.</p>"
+        )
+        media_pagination = "".join(
+            f"<a class='filter-tab{' active' if number == page else ''}' href='/publishing?tab=media&page={number}{'&q=' + quote(media_search) if media_search else ''}'>{number}</a>"
+            for number in range(1, media_page_count + 1)
+        )
+        media_body = (
+            "<div class='section-head'><div><h2>WordPress images</h2>"
+            f"<p class='muted'>{len(filtered_media)} matching · {'synced ' + media_synced_at[:10] if media_synced_at else 'not synced yet'}</p></div>{media_sync}</div>"
+            "<form class='media-search' method='get' action='/publishing'><input type='hidden' name='tab' value='media'>"
+            f"<input type='search' name='q' value='{escape(media_search, quote=True)}' placeholder='Search image title, filename, or alt text'>"
+            "<button type='submit'>Search media</button></form>"
+            "<div class='layout'><section>"
+            f"<div class='media-grid'>{media_cards}</div><nav class='filter-tabs' aria-label='Media pages'>{media_pagination}</nav></section>"
+            "<aside class='stack'><section class='panel upload-panel'><p class='eyebrow'>UPLOAD IMAGE</p>"
+            "<h2>Add to WordPress media</h2>"
+            f"<p class='muted'>{escape(upload_note)}</p>"
+            "<form method='post' action='/publishing/wordpress/media/upload' enctype='multipart/form-data'>"
+            "<input type='file' name='image' accept='image/jpeg,image/png,image/webp,image/gif' required>"
+            "<input name='title' required placeholder='Image title'>"
+            "<textarea name='alt_text' required placeholder='Describe the image for accessibility'></textarea>"
+            f"<button type='submit'{upload_disabled}>Upload to WordPress</button></form></section></aside></div>"
+        )
         return _page(
             "Publishing Hub",
             "<header class='page-head'><p class='eyebrow'>PUBLISHING HUB</p>"
@@ -1165,14 +1269,9 @@ def create_app(
             f"<article class='stat-card'><small>Article drafts</small><strong class='stat-value'>{len(rows)}</strong><span class='muted'>available for setup</span></article>"
             f"<article class='stat-card'><small>Ready to deliver</small><strong class='stat-value'>{ready_count}</strong><span class='muted'>approved article(s)</span></article>"
             f"<article class='stat-card'><small>Category assignments</small><strong class='stat-value'>{assigned_count}</strong><span class='muted'>configured article(s)</span></article>"
-            f"<article class='stat-card'><small>WordPress categories</small><strong class='stat-value'>{len(categories)}</strong><span class='muted'>{'last synced ' + synced_at[:10] if synced_at else 'not synced yet'}</span></article></section>"
-            f"{notice_html}<div class='layout'><section class='panel'><div class='section-head'><h2>Article publishing setup</h2>"
-            "<span class='muted'>Latest versions only</span></div>"
-            f"<div class='publishing-list'>{publishing_rows}</div></section>"
-            "<aside class='stack'><section class='panel connection-card'><p class='eyebrow'>WORDPRESS CONNECTION</p>"
-            f"<h2>{escape(site_label)}</h2><p class='muted'>{escape(connection_note)}</p>{sync_button}</section>"
-            "<section class='panel'><h2>Available categories</h2>"
-            f"<div class='taxonomy-list'>{taxonomy}</div></section></aside></div>",
+            f"<article class='stat-card'><small>WordPress assets</small><strong class='stat-value'>{len(categories) + len(media)}</strong><span class='muted'>{len(categories)} categories · {len(media)} images</span></article></section>"
+            f"{notice_html}{publishing_tabs}"
+            f"{articles_body if tab == 'articles' else categories_body if tab == 'categories' else media_body}",
             active="publishing",
         )
 
@@ -1189,7 +1288,81 @@ def create_app(
             ) from exc
         store.replace_wordpress_categories(categories)
         return RedirectResponse(
-            f"/publishing?notice={len(categories)}%20WordPress%20categories%20synced",
+            f"/publishing?tab=categories&notice={len(categories)}%20WordPress%20categories%20synced",
+            status_code=303,
+        )
+
+    @app.post("/publishing/wordpress/media/sync")
+    async def sync_wordpress_media() -> RedirectResponse:
+        try:
+            media = await publisher_factory().list_media()
+        except ValueError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail="The WordPress media library could not be loaded. Check the connection and credentials.",
+            ) from exc
+        store.replace_wordpress_media(media)
+        return RedirectResponse(
+            f"/publishing?tab=media&notice={len(media)}%20WordPress%20images%20synced",
+            status_code=303,
+        )
+
+    @app.post("/publishing/wordpress/media/upload")
+    async def upload_wordpress_media(
+        image: UploadFile = File(),
+        title: str = Form(),
+        alt_text: str = Form(),
+    ) -> RedirectResponse:
+        allowed_types = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+        content_type = (image.content_type or "").lower()
+        if content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400,
+                detail="Choose a JPEG, PNG, WebP, or GIF image.",
+            )
+        clean_title = title.strip()
+        clean_alt_text = alt_text.strip()
+        if not clean_title or not clean_alt_text:
+            raise HTTPException(
+                status_code=400,
+                detail="An image title and accessibility description are required.",
+            )
+        filename = "".join(
+            character
+            for character in Path(image.filename or "uploaded-image").name
+            if character.isalnum() or character in {".", "-", "_"}
+        ) or "uploaded-image"
+        content = await image.read(10 * 1024 * 1024 + 1)
+        await image.close()
+        if not content or len(content) > 10 * 1024 * 1024:
+            raise HTTPException(
+                status_code=400,
+                detail="The image must be larger than 0 bytes and no more than 10 MB.",
+            )
+        try:
+            validate_image_upload(content_type, content)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            item = await publisher_factory().upload_media(
+                filename=filename,
+                content_type=content_type,
+                content=content,
+                title=clean_title,
+                alt_text=clean_alt_text,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail="The image could not be uploaded to WordPress.",
+            ) from exc
+        store.upsert_wordpress_media(item)
+        return RedirectResponse(
+            "/publishing?tab=media&notice=Image%20uploaded%20to%20WordPress",
             status_code=303,
         )
 
@@ -1197,6 +1370,7 @@ def create_app(
     def save_wordpress_settings(
         content_item_id: str,
         category_id: list[int] = Form(default=[]),
+        featured_media_id: int = Form(0),
     ) -> RedirectResponse:
         draft = store.get_latest_draft(content_item_id)
         if draft is None:
@@ -1212,6 +1386,7 @@ def create_app(
                 WordPressPublishingSettings(
                     content_item_id=content_item_id,
                     category_ids=category_id,
+                    featured_media_id=featured_media_id or None,
                 )
             )
         except KeyError as exc:
@@ -1616,6 +1791,7 @@ def create_app(
             store.get_wordpress_delivery(latest_draft.draft_id) if latest_draft else None
         )
         wordpress_categories = store.list_wordpress_categories()
+        wordpress_media = store.list_wordpress_media()
         wordpress_settings = store.get_wordpress_publishing_settings(content_item_id)
         social_campaign = (
             store.get_social_campaign(latest_draft.draft_id) if latest_draft else None
@@ -1834,10 +2010,19 @@ def create_app(
                 for category in wordpress_categories
                 if category.category_id in wordpress_settings.category_ids
             ]
+            featured_image = next(
+                (
+                    item
+                    for item in wordpress_media
+                    if item.media_id == wordpress_settings.featured_media_id
+                ),
+                None,
+            )
             wordpress_category_panel = (
-                "<section class='panel'><p class='eyebrow'>WORDPRESS CATEGORIES</p><h2>Saved with this draft</h2>"
+                "<section class='panel'><p class='eyebrow'>WORDPRESS SETUP</p><h2>Saved with this draft</h2>"
                 f"<p>{escape(', '.join(category_names) if category_names else 'WordPress default category')}</p>"
-                "<small class='muted'>This article version already exists in WordPress. Change its categories in WordPress if needed.</small></section>"
+                f"<p><strong>Featured image:</strong> {escape(featured_image.title if featured_image else 'None selected')}</p>"
+                "<small class='muted'>This article version already exists in WordPress. Change its website metadata in WordPress if needed.</small></section>"
             )
         elif latest_draft and wordpress_categories:
             category_options = "".join(
@@ -1847,13 +2032,47 @@ def create_app(
                 f"<span><strong>{escape(category.name)}</strong><small class='muted'>/{escape(category.slug)} · {category.post_count} post(s)</small></span></label>"
                 for category in wordpress_categories
             )
+            selectable_media = [
+                item
+                for item in wordpress_media
+                if item.mime_type
+                in {"image/jpeg", "image/png", "image/webp", "image/gif"}
+            ]
+            current_featured_image = next(
+                (
+                    item
+                    for item in selectable_media
+                    if item.media_id == wordpress_settings.featured_media_id
+                ),
+                None,
+            )
+            media_options = "<option value='0'>No featured image — use the website default</option>" + "".join(
+                f"<option value='{item.media_id}'"
+                f"{' selected' if item.media_id == wordpress_settings.featured_media_id else ''}>"
+                f"{escape(item.title)} — {escape(item.filename or item.mime_type)}</option>"
+                for item in selectable_media
+            )
+            current_featured_preview = (
+                f"<img src='{escape(current_featured_image.thumbnail_url or current_featured_image.source_url, quote=True)}' "
+                f"alt='{escape(current_featured_image.alt_text or current_featured_image.title, quote=True)}' style='width:min(100%,420px);border-radius:12px;margin-bottom:10px'>"
+                if current_featured_image
+                else ""
+            )
+            media_intro = (
+                current_featured_preview
+                + f"<select name='featured_media_id'>{media_options}</select>"
+                + "<p><a class='text-link' href='/publishing?tab=media'>Browse or upload images in the Publishing Hub →</a></p>"
+                if selectable_media
+                else "<p class='muted'>Sync the media library before choosing a featured image. <a class='text-link' href='/publishing?tab=media'>Open Media library →</a></p>"
+            )
             wordpress_category_panel = (
-                "<section class='panel'><p class='eyebrow'>WORDPRESS CATEGORIES</p>"
+                "<section class='panel'><p class='eyebrow'>WORDPRESS SETUP</p>"
                 "<h2>Where should this article appear?</h2>"
                 "<p class='muted'>Choose one or more categories from your website. If none are selected, WordPress will use its default category.</p>"
                 f"<form method='post' action='/items/{encoded_id}/wordpress/settings'>"
                 f"<div class='category-grid'>{category_options}</div>"
-                "<button type='submit'>Save WordPress categories</button></form></section>"
+                "<h3>Featured image</h3><p class='muted'>Choose the image WordPress should use on listings, previews, and social link cards.</p>"
+                f"{media_intro}<button type='submit'>Save WordPress setup</button></form></section>"
             )
         elif latest_draft:
             wordpress_category_panel = (
@@ -2867,12 +3086,30 @@ def create_app(
             category.category_id: category
             for category in store.list_wordpress_categories()
         }
-        payload = build_wordpress_payload(draft, settings.category_ids)
+        media = {item.media_id: item for item in store.list_wordpress_media()}
+        featured_image = (
+            media.get(settings.featured_media_id)
+            if settings.featured_media_id is not None
+            else None
+        )
+        payload = build_wordpress_payload(
+            draft,
+            settings.category_ids,
+            settings.featured_media_id,
+        )
         selected_category_names = [
             categories[category_id].name
             for category_id in settings.category_ids
             if category_id in categories
         ]
+        featured_preview = (
+            f"<img src='{escape(featured_image.thumbnail_url or featured_image.source_url, quote=True)}' "
+            f"alt='{escape(featured_image.alt_text or featured_image.title, quote=True)}' "
+            "style='width:100%;border-radius:12px'>"
+            f"<p>{escape(featured_image.title)}</p>"
+            if featured_image
+            else "<p class='muted'>No featured image selected.</p>"
+        )
         encoded_id = quote(content_item_id, safe="")
         return _page(
             f"WordPress preview · {draft.title}",
@@ -2885,6 +3122,7 @@ def create_app(
             f"<h2>{escape(str(payload['title']))}</h2>{payload['content']}</article>"
             "<aside class='stack'><section class='panel'><span class='badge approved'>Draft only</span>"
             f"<h2>Website categories</h2><p>{escape(', '.join(selected_category_names) if selected_category_names else 'WordPress default category')}</p>"
+            f"<h2>Featured image</h2>{featured_preview}"
             "<h2>Ready to deliver?</h2><p class='muted'>WordPress will create an unpublished draft. Publishing remains manual.</p>"
             f"<form method='post' action='/items/{encoded_id}/wordpress'><button type='submit'>Create WordPress draft</button></form>"
             f"<a class='text-link' href='/items/{encoded_id}?tab=delivery'>Return to delivery</a></section></aside></div>",
@@ -2908,7 +3146,9 @@ def create_app(
             )
         try:
             result = await publisher_factory().create_draft(
-                draft, settings.category_ids
+                draft,
+                settings.category_ids,
+                settings.featured_media_id,
             )
         except ValueError as exc:
             store.fail_wordpress_delivery(delivery.delivery_id, str(exc))

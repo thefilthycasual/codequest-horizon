@@ -10,6 +10,7 @@ from src.editorial.models import (
     DraftParagraph,
     DraftSection,
     WordPressCategory,
+    WordPressMediaItem,
 )
 from src.editorial.quality import evaluate_draft
 from src.editorial.store import EditorialStore
@@ -68,6 +69,8 @@ class _StubPublisher:
     def __init__(self):
         self.calls = 0
         self.category_ids = []
+        self.featured_media_id = None
+        self.uploaded = None
 
     async def list_categories(self):
         return [
@@ -85,9 +88,43 @@ class _StubPublisher:
             ),
         ]
 
-    async def create_draft(self, draft, category_ids=None):
+    async def list_media(self):
+        return [
+            WordPressMediaItem(
+                media_id=30,
+                title="Orange code illustration",
+                filename="orange-code.webp",
+                source_url="https://wordpress.example/uploads/orange-code.webp",
+                thumbnail_url="https://wordpress.example/uploads/orange-code-300.webp",
+                mime_type="image/webp",
+                alt_text="Code editor with an orange interface",
+                width=1200,
+                height=675,
+            )
+        ]
+
+    async def upload_media(
+        self, *, filename, content_type, content, title, alt_text
+    ):
+        self.uploaded = (filename, content_type, content, title, alt_text)
+        return WordPressMediaItem(
+            media_id=31,
+            title=title,
+            filename=filename,
+            source_url="https://wordpress.example/uploads/new-image.png",
+            thumbnail_url="https://wordpress.example/uploads/new-image-300.png",
+            mime_type=content_type,
+            alt_text=alt_text,
+            width=1200,
+            height=675,
+        )
+
+    async def create_draft(
+        self, draft, category_ids=None, featured_media_id=None
+    ):
         self.calls += 1
         self.category_ids = category_ids or []
+        self.featured_media_id = featured_media_id
         return WordPressDraftResult(
             post_id=42,
             post_url="https://wordpress.example/?p=42",
@@ -96,9 +133,12 @@ class _StubPublisher:
 
 
 class _FlakyPublisher(_StubPublisher):
-    async def create_draft(self, draft, category_ids=None):
+    async def create_draft(
+        self, draft, category_ids=None, featured_media_id=None
+    ):
         self.calls += 1
         self.category_ids = category_ids or []
+        self.featured_media_id = featured_media_id
         if self.calls == 1:
             raise RuntimeError("temporary failure")
         return WordPressDraftResult(
@@ -120,6 +160,8 @@ def test_wordpress_payload_is_draft_only_and_escapes_generated_html() -> None:
     assert "<h2>What &lt;changed&gt;</h2>" in payload["content"]
     assert "https://example.com/beta" in payload["content"]
     assert build_wordpress_payload(_draft(packet), [7, 9, 7])["categories"] == [7, 9]
+    featured_payload = build_wordpress_payload(_draft(packet), [7], 30)
+    assert featured_payload["featured_media"] == 30
 
 
 def test_wordpress_publisher_loads_paginated_categories() -> None:
@@ -158,6 +200,139 @@ def test_wordpress_publisher_loads_paginated_categories() -> None:
     assert [category.category_id for category in categories] == [1, 2]
     assert all(request.url.path.endswith("/wp-json/wp/v2/categories") for request in requests)
     assert requests[0].url.params["hide_empty"] == "false"
+
+
+def test_wordpress_publisher_loads_image_media_details() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "id": 30,
+                    "date_gmt": "2026-07-22T10:00:00",
+                    "slug": "orange-code",
+                    "title": {"rendered": "Orange code illustration"},
+                    "caption": {"rendered": "A generated illustration"},
+                    "alt_text": "Code editor with orange accents",
+                    "mime_type": "image/webp",
+                    "source_url": "https://wp.example/orange-code.webp",
+                    "media_details": {
+                        "file": "2026/07/orange-code.webp",
+                        "width": 1200,
+                        "height": 675,
+                        "sizes": {
+                            "medium": {
+                                "source_url": "https://wp.example/orange-code-300.webp"
+                            }
+                        },
+                    },
+                }
+            ],
+        )
+
+    async def load():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await WordPressPublisher(
+                WordPressConfig(
+                    "https://wp.example",
+                    "editor",
+                    "application-password",
+                    dry_run=True,
+                ),
+                client,
+            ).list_media()
+
+    media = asyncio.run(load())
+
+    assert media[0].media_id == 30
+    assert media[0].filename == "orange-code.webp"
+    assert media[0].thumbnail_url.endswith("orange-code-300.webp")
+    assert media[0].width == 1200
+
+
+def test_wordpress_publisher_uploads_image_with_accessible_metadata() -> None:
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["content_type"] = request.headers["content-type"]
+        captured["body"] = request.content
+        return httpx.Response(
+            201,
+            json={
+                "id": 31,
+                "slug": "new-dashboard-image",
+                "title": {"rendered": "New dashboard image"},
+                "caption": {"rendered": ""},
+                "alt_text": "An orange editorial dashboard",
+                "mime_type": "image/png",
+                "source_url": "https://wp.example/new-dashboard-image.png",
+                "media_details": {"file": "new-dashboard-image.png"},
+            },
+        )
+
+    async def upload():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await WordPressPublisher(
+                WordPressConfig(
+                    "https://wp.example",
+                    "editor",
+                    "application-password",
+                    dry_run=False,
+                ),
+                client,
+            ).upload_media(
+                filename="new-dashboard-image.png",
+                content_type="image/png",
+                content=b"\x89PNG\r\n\x1a\nsafe-image-bytes",
+                title="New dashboard image",
+                alt_text="An orange editorial dashboard",
+            )
+
+    item = asyncio.run(upload())
+
+    assert captured["method"] == "POST"
+    assert captured["content_type"].startswith("multipart/form-data;")
+    assert b"safe-image-bytes" in captured["body"]
+    assert b"An orange editorial dashboard" in captured["body"]
+    assert item.media_id == 31
+
+
+def test_media_upload_is_guarded_and_cached(tmp_path) -> None:
+    db_path = tmp_path / "editorial.sqlite3"
+    publisher = _StubPublisher()
+    client = TestClient(
+        create_app(db_path, wordpress_publisher_factory=lambda: publisher)
+    )
+
+    rejected = client.post(
+        "/publishing/wordpress/media/upload",
+        files={"image": ("unsafe.svg", b"<svg></svg>", "image/svg+xml")},
+        data={"title": "Unsafe", "alt_text": "Unsafe vector"},
+    )
+    uploaded = client.post(
+        "/publishing/wordpress/media/upload",
+        files={
+            "image": (
+                "new image.png",
+                b"\x89PNG\r\n\x1a\nsafe-image-bytes",
+                "image/png",
+            )
+        },
+        data={
+            "title": "New dashboard image",
+            "alt_text": "An orange editorial dashboard",
+        },
+        follow_redirects=False,
+    )
+
+    assert rejected.status_code == 400
+    assert uploaded.status_code == 303
+    assert publisher.uploaded[0] == "newimage.png"
+    assert publisher.uploaded[1] == "image/png"
+    cached = EditorialStore(db_path).list_wordpress_media()
+    assert cached[0].media_id == 31
+    assert cached[0].alt_text == "An orange editorial dashboard"
 
 
 def test_wordpress_publisher_uses_posts_api_basic_auth_and_requires_draft() -> None:
@@ -265,12 +440,16 @@ def test_publishing_hub_syncs_and_assigns_real_wordpress_categories(tmp_path) ->
     synced = client.post(
         "/publishing/wordpress/categories/sync", follow_redirects=False
     )
+    media_synced = client.post(
+        "/publishing/wordpress/media/sync", follow_redirects=False
+    )
     assigned = client.post(
         f"/items/{item_id}/wordpress/settings",
-        data={"category_id": ["7", "9"]},
+        data={"category_id": ["7", "9"], "featured_media_id": "30"},
         follow_redirects=False,
     )
     hub = client.get("/publishing")
+    media_page = client.get("/publishing?tab=media&q=orange")
     delivery_page = client.get(
         f"/items/{item_id}?tab=delivery&channel=wordpress"
     )
@@ -278,13 +457,19 @@ def test_publishing_hub_syncs_and_assigns_real_wordpress_categories(tmp_path) ->
     delivered = client.post(f"/items/{item_id}/wordpress", follow_redirects=False)
 
     assert synced.status_code == 303
+    assert media_synced.status_code == 303
     assert assigned.status_code == 303
     assert "Developer Tools" in hub.text
+    assert "Orange code illustration" in media_page.text
+    assert "1 matching" in media_page.text
     assert "Where should this article appear?" in delivery_page.text
     assert "Developer Tools, AI" in preview.text
+    assert "Orange code illustration" in preview.text
     assert delivered.status_code == 303
     assert publisher.category_ids == [7, 9]
+    assert publisher.featured_media_id == 30
     assert store.get_wordpress_publishing_settings(item_id).category_ids == [7, 9]
+    assert store.get_wordpress_publishing_settings(item_id).featured_media_id == 30
 
 
 def test_wordpress_delivery_requires_exact_workspace_approval(tmp_path) -> None:
